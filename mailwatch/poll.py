@@ -5,6 +5,7 @@ import logging
 import os
 import time
 import traceback
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 from .actions import process_queue
@@ -13,7 +14,7 @@ from .config import Account, Config
 from .filters import Matcher
 from .imap_client import Mailbox
 from .parser import parse_message
-from .storage import IndexBuffer, Store, make_id, now_iso
+from .storage import IndexBuffer, Store, make_id, now_iso, read_json, write_json
 from .telegram import Telegram, format_error, format_new_mail
 
 log = logging.getLogger("mailwatch.poll")
@@ -46,6 +47,7 @@ class AccountRun:
     def run(self) -> dict:
         acc = self.acc
         try:
+            self._reclassify_if_needed()
             self._run()
             self.state["last_error"] = None
             self.state.pop("last_error_notified", None)
@@ -119,6 +121,36 @@ class AccountRun:
             fs["backfill_cursor"] = 0
             log.info("[%s] %s: اكتمل سحب الأرشيف القديم", self.acc.id, folder)
 
+    # ---------- إعادة تطبيق الفلاتر ----------
+    def _reclassify_if_needed(self) -> None:
+        """عند تعديل الفلاتر: إعادة فحص كل الرسائل المحفوظة وتحديث المطابقة والفهارس."""
+        acc = self.acc
+        h = acc.filters_hash
+        if self.state.get("filters_hash") == h:
+            return
+        mdir = self.store.root / "messages" / acc.id
+        changed = total = matched = 0
+        for path in sorted(mdir.glob("*.json")) if mdir.exists() else []:
+            msg = read_json(path)
+            if not isinstance(msg, dict) or "id" not in msg:
+                continue
+            total += 1
+            new = [] if msg.get("sent") else self.matcher.match(msg)
+            if new:
+                matched += 1
+            if new != (msg.get("matched") or []):
+                msg["matched"] = new
+                write_json(path, msg)
+                self.idx.upsert(Store.index_entry(msg))
+                changed += 1
+        self.idx.flush()
+        self.state["counts"]["matched"] = matched
+        self.state["filters_hash"] = h
+        self.state["filters_applied_at"] = now_iso()
+        self.store.save_state(acc.id, self.state)
+        self.stats["reclassified"] = changed
+        log.info("[%s] إعادة تطبيق الفلاتر على %d رسالة: تغيّرت مطابقة %d رسالة", acc.id, total, changed)
+
     # ---------- رسالة واحدة ----------
     def _handle(self, folder: str, uv, item: dict, is_new: bool) -> None:
         acc = self.acc
@@ -151,7 +183,7 @@ class AccountRun:
             self.stats["skipped"] += 1
             return
         should_notify = is_new and self.tg.enabled and (
-            acc.notify == "all" or (acc.notify == "matched" and bool(matched))
+            acc.notify == "all" or (acc.notify == "matched" and acc.notify_for(matched))
         )
         if should_notify:
             data["notified_at"] = now_iso()
@@ -187,6 +219,16 @@ class AccountRun:
         return account_summary(self.acc, self.store, self.state, self.stats)
 
 
+def filter_counts(store: Store, aid: str) -> dict:
+    """عدد الرسائل المطابقة لكل فلتر (من الفهارس الشهرية)."""
+    c: Counter = Counter()
+    for month in store.list_months(aid):
+        for e in store.load_index(aid, month):
+            for name in e.get("matched") or []:
+                c[name] += 1
+    return dict(c)
+
+
 def account_summary(acc: Account, store: Store, state: dict, stats: dict | None = None) -> dict:
     folders = state.get("folders") or {}
     done = sum(int(f.get("backfill_done", 0)) for f in folders.values())
@@ -203,6 +245,8 @@ def account_summary(acc: Account, store: Store, state: dict, stats: dict | None 
         "counts": state.get("counts") or {"total": 0, "matched": 0, "unread": 0},
         "backfill": {"remaining": remaining, "done": done, "total": total},
         "months": store.list_months(acc.id),
+        "filter_counts": filter_counts(store, acc.id),
+        "filters_applied_at": state.get("filters_applied_at"),
         "run": stats or {},
     }
 

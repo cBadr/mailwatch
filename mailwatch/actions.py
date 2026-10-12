@@ -226,12 +226,12 @@ def _modify(acc, action: str, msg: dict, store: Store) -> dict:
             if was_seen != seen:
                 _adjust_unread(store, acc.id, -1 if seen else 1)
             changes = {"flags": {"seen": seen}}
-            detail = "تم التعليم كمقروءة" if seen else "تم التعليم كغير مقروءة"
+            detail = "تم تحديدها كمقروءة" if seen else "تم تحديدها كغير مقروءة"
         elif action in ("flag", "unflag"):
             on = action == "flag"
             mb.store_flags([uid], "(\\Flagged)", add=on)
             changes = {"flags": {"flagged": on}}
-            detail = "تم تمييز الرسالة" if on else "تم إزالة التمييز"
+            detail = "تمت إضافة نجمة للرسالة" if on else "تمت إزالة النجمة"
         elif action == "archive":
             dest = acc.archive_folder if acc.archive_folder and mb.folder_exists(acc.archive_folder) else None
             dest = dest or mb.special_folder("\\Archive")
@@ -243,14 +243,14 @@ def _modify(acc, action: str, msg: dict, store: Store) -> dict:
             else:
                 raise ActionError("لا يوجد مجلد أرشيف على هذا الحساب. حدد archive_folder في الإعدادات")
             changes = {"archived": True, "archived_at": now_iso(), "moved_to": dest}
-            detail = f"تمت الأرشفة إلى {dest}"
+            detail = f"تم نقل الرسالة إلى الأرشيف ({dest})"
         elif action == "trash":
             dest = mb.special_folder("\\Trash") or (acc.trash if acc.trash and mb.folder_exists(acc.trash) else None)
             if not dest:
-                raise ActionError("لم يتم العثور على مجلد المهملات. حدد trash في الإعدادات")
+                raise ActionError("لم يتم العثور على سلة المحذوفات في هذا البريد. حدد اسمها في الحقل trash بالإعدادات")
             mb.move([uid], dest)
             changes = {"trashed": True, "trashed_at": now_iso(), "moved_to": dest}
-            detail = "تم النقل إلى المهملات"
+            detail = "تم حذف الرسالة (نُقلت إلى سلة المحذوفات في بريدك)"
         else:
             raise ActionError(f"أمر غير مدعوم: {action}")
     finally:

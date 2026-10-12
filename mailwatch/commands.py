@@ -11,19 +11,19 @@ log = logging.getLogger("mailwatch.commands")
 
 HELP = """<b>الأوامر المتاحة</b>
 /status — حالة الحسابات وعدد الرسائل
-/read <code>المعرف</code> — تعليم كمقروءة
-/unread <code>المعرف</code> — تعليم كغير مقروءة
-/flag <code>المعرف</code> — تمييز الرسالة
-/archive <code>المعرف</code> — أرشفة
-/trash <code>المعرف</code> — نقل إلى المهملات
-/reply <code>المعرف</code> نص الرد — إرسال رد
+/reply <code>المعرف</code> نص الرد — الرد على الرسالة
+/read <code>المعرف</code> — تحديد كمقروءة
+/unread <code>المعرف</code> — تحديد كغير مقروءة
+/flag <code>المعرف</code> — إضافة نجمة
+/archive <code>المعرف</code> — نقل إلى الأرشيف
+/delete <code>المعرف</code> — حذف الرسالة (تُنقل لسلة المحذوفات)
 
 المعرف يصلك مع كل تنبيه بالشكل <code>حساب:معرف</code>.
 تُنفذ الأوامر في دورة الفحص التالية (عادةً خلال 5 دقائق)."""
 
 _CMD_MAP = {
     "/read": "mark_read", "/unread": "mark_unread", "/flag": "flag",
-    "/archive": "archive", "/trash": "trash", "/reply": "reply",
+    "/archive": "archive", "/trash": "trash", "/delete": "trash", "/reply": "reply",
 }
 
 

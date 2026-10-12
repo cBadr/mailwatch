@@ -19,10 +19,15 @@ defaults:
   telegram_chat_id: ""      # إن تُرك فارغًا يُستخدم TELEGRAM_CHAT_ID من الـ Secrets
   store_raw: true           # حفظ النسخة الأصلية .eml
   extract_attachments: true # حفظ المرفقات كملفات منفصلة
-  # فلاتر تُطبق على كل الحسابات (تُضاف إلى فلاتر كل حساب)
+  # الفلاتر (يُفضَّل إدارتها من صفحة الفلاتر في لوحة التحكم)
+  # anywhere = المرسل أو المستلم أو العنوان أو النص. أي تعديل يُعاد تطبيقه على كل الرسائل المحفوظة تلقائيًا.
   filters:
     - name: كلمة مهمة
       anywhere: ["عاجل", "urgent"]
+    - name: Excel
+      anywhere: ["excel"]
+      notify: false              # بدون تنبيه تليجرام لهذا الفلتر
+      accounts: [hamza_gmail]    # حسابات محددة فقط (احذف السطر ليشمل كل الحسابات)
 
 accounts:
   - id: hamza_gmail                 # حروف إنجليزية وأرقام و _ - فقط

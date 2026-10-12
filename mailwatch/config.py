@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -74,6 +75,8 @@ class FilterRule:
     body: list[str] = field(default_factory=list)
     anywhere: list[str] = field(default_factory=list)
     match: str = "any"  # any: يكفي تطابق حقل واحد | all: كل الحقول المحددة
+    notify: bool = True  # إرسال تنبيه تليجرام عند المطابقة (حين يكون تنبيه الحساب "matched")
+    accounts: list[str] = field(default_factory=list)  # للفلاتر العامة: حسابات محددة (فارغ = كل الحسابات)
 
     @classmethod
     def from_dict(cls, d: dict, idx: int) -> "FilterRule":
@@ -90,7 +93,13 @@ class FilterRule:
             body=_as_list(d.get("body")),
             anywhere=_as_list(d.get("anywhere")),
             match=match,
+            notify=bool(d.get("notify", True)),
+            accounts=_as_list(d.get("accounts")),
         )
+
+    def fingerprint(self) -> dict:
+        return {"name": self.name, "from": self.from_, "to": self.to, "subject": self.subject,
+                "body": self.body, "anywhere": self.anywhere, "match": self.match}
 
     @property
     def is_empty(self) -> bool:
@@ -124,6 +133,16 @@ class Account:
     extract_attachments: bool = True
     enabled: bool = True
     signature: str = ""
+
+    @property
+    def filters_hash(self) -> str:
+        """بصمة الفلاتر: تتغير عند أي تعديل في شروطها فيُعاد تطبيقها على الرسائل المحفوظة."""
+        data = json.dumps([f.fingerprint() for f in self.filters], ensure_ascii=False, sort_keys=True)
+        return hashlib.sha1(data.encode()).hexdigest()[:16]
+
+    def notify_for(self, matched: list[str]) -> bool:
+        flags = {f.name: f.notify for f in self.filters}
+        return any(flags.get(n, True) for n in matched)
 
     def summary(self) -> dict:
         """بيانات غير حساسة لعرضها في لوحة التحكم."""
@@ -239,9 +258,15 @@ def build_account(d: dict, defaults: dict) -> Account:
     if not imap_host:
         raise ConfigError(f"[{aid}] المزود المخصص يحتاج imap_host (و smtp_host للإرسال)")
 
-    rules_raw = list(defaults.get("filters") or []) + list(d.get("filters") or [])
-    filters = [FilterRule.from_dict(f, i) for i, f in enumerate(rules_raw)]
-    filters = [f for f in filters if not f.is_empty]
+    global_rules = [FilterRule.from_dict(f, i) for i, f in enumerate(defaults.get("filters") or [])]
+    global_rules = [f for f in global_rules if not f.accounts or aid in f.accounts]
+    own_rules = [FilterRule.from_dict(f, i) for i, f in enumerate(d.get("filters") or [])]
+    filters, names = [], set()
+    for f in global_rules + own_rules:
+        if f.is_empty or f.name in names:
+            continue
+        names.add(f.name)
+        filters.append(f)
 
     archive = str(pick("archive", "all")).lower()
     notify = str(pick("notify", "matched")).lower()
