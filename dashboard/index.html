@@ -171,7 +171,7 @@ details summary{cursor:pointer;font-weight:700}
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const DEFAULTS = { mode: 'github', repo: 'cBadr/Hamza', codeRepo: 'cBadr/mailwatch', branch: 'main', token: '', prefix: 'data', localBase: '..', theme: 'auto' };
+const DEFAULTS = { mode: 'server', repo: 'cBadr/Hamza', codeRepo: 'cBadr/mailwatch', branch: 'main', token: '', prefix: 'data', localBase: '..', theme: 'auto' };
 let settings = loadSettings();
 const cache = new Map();          // url -> {etag, text}
 const mem = { accounts: null, index: new Map(), config: null };
@@ -215,21 +215,43 @@ function currentMonth() { const d = new Date(); return `${d.getUTCFullYear()}-${
 
 /* ========= مصدر البيانات (GitHub API أو ملفات محلية) ========= */
 const isLocal = () => settings.mode === 'local';
+// وضع الخادم: الطلبات تمر عبر /api/gh على Vercel، والتوكن محفوظ هناك وليس في المتصفح
+const isServer = () => settings.mode === 'server';
+const session = { checked: false, authed: false };
+async function checkSession() {
+  try {
+    const r = await fetch('/api/session', { cache: 'no-store' });
+    const j = r.ok ? await r.json() : {};
+    session.authed = !!j.authenticated;
+    if (j.data) settings.repo = j.data;
+    if (j.code) settings.codeRepo = j.code;
+  } catch { session.authed = false; }
+  session.checked = true;
+  return session.authed;
+}
+function ghUrl(apiPath, repo) {
+  const path = `repos/${repo}/${apiPath}`.replace(/\/(\?|$)/, '$1');
+  return isServer() ? `/api/gh?p=${encodeURIComponent(path)}` : `https://api.github.com/${path}`;
+}
 function ghHeaders(raw) {
   const h = { 'Accept': raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-  if (settings.token) h.Authorization = 'Bearer ' + settings.token;
+  if (isServer()) h['X-MW'] = '1';
+  else if (settings.token) h.Authorization = 'Bearer ' + settings.token;
   return h;
 }
 const encPath = p => p.split('/').map(encodeURIComponent).join('/');
 function dataPath(path) { return settings.prefix ? `${settings.prefix.replace(/\/+$/, '')}/${path}` : path; }
 function fileUrl(path) {
   if (isLocal()) return `${settings.localBase.replace(/\/+$/, '')}/${encPath(path)}`;
-  return `https://api.github.com/repos/${settings.repo}/contents/${encPath(path)}?ref=${encodeURIComponent(settings.branch)}`;
+  return ghUrl(`contents/${encPath(path)}?ref=${encodeURIComponent(settings.branch)}`, settings.repo);
 }
 async function errMsg(r) {
   let m = `خطأ ${r.status}`;
   try { const j = await r.json(); if (j.message) m += `: ${j.message}`; } catch {}
-  if (r.status === 401) m = 'التوكن غير صالح أو منتهي الصلاحية';
+  if (r.status === 401) {
+    m = isServer() ? 'انتهت الجلسة، سجّل الدخول مرة أخرى' : 'التوكن غير صالح أو منتهي الصلاحية';
+    if (isServer()) { session.authed = false; setTimeout(() => { location.hash = '#/login'; }, 50); }
+  }
   if (r.status === 403) m += ' — الصلاحيات غير كافية أو تجاوزت حد الطلبات';
   if (r.status === 404) m = 'غير موجود (تحقق من اسم المستودع والفرع والمسار)';
   return m;
@@ -250,14 +272,24 @@ async function fetchText(path, optional = true) {
 }
 async function fetchJSON(path, optional = true) { const t = await fetchText(path, optional); return t == null ? null : JSON.parse(t); }
 async function fetchBlob(path) {
+  if (isServer()) {
+    // الملفات الكبيرة لا تمر عبر الخادم: نطلب رابط تنزيل مؤقتًا من GitHub ونحمّل منه مباشرة
+    const r = await fetch(fileUrl(path) + '&dl=1', { headers: ghHeaders(false), cache: 'no-store' });
+    if (!r.ok) throw new Error(await errMsg(r));
+    const { download_url } = await r.json();
+    if (!download_url) throw new Error('تعذر الحصول على رابط التنزيل');
+    const d = await fetch(download_url);
+    if (!d.ok) throw new Error(`تعذر التنزيل (${d.status})`);
+    return d.blob();
+  }
   const r = await fetch(fileUrl(path), { headers: isLocal() ? {} : ghHeaders(true) });
   if (!r.ok) throw new Error(await errMsg(r));
   return r.blob();
 }
 async function ghApi(apiPath, { method = 'GET', body, repo } = {}) {
   if (isLocal()) throw new Error('هذه العملية تحتاج وضع GitHub (الإعدادات)');
-  if (!settings.token) throw new Error('أضف توكن GitHub في الإعدادات أولًا');
-  const r = await fetch(`https://api.github.com/repos/${repo || settings.repo}/${apiPath}`, {
+  if (!isServer() && !settings.token) throw new Error('أضف توكن GitHub في الإعدادات أولًا');
+  const r = await fetch(ghUrl(apiPath, repo || settings.repo), {
     method, headers: { ...ghHeaders(false), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -283,7 +315,7 @@ async function dispatchAction(payload) {
 async function runWorkflow(file, inputs = {}) {
   await ghApi(`actions/workflows/${file}/dispatches`, { method: 'POST', repo: codeRepo(), body: { ref: settings.branch, inputs } });
 }
-function configured() { return isLocal() || (settings.repo && settings.token); }
+function configured() { return isLocal() || (isServer() ? session.authed : !!(settings.repo && settings.token)); }
 
 /* ========= تحميل البيانات ========= */
 async function loadAccounts(force = false) {
@@ -320,7 +352,9 @@ async function route() {
   const [name, ...rest] = h.split('/');
   const base = (name || '').split('?')[0];
   setNav(['msg'].includes(base) ? 'mail' : (base === 'account' ? 'accounts' : base));
-  if (!configured() && base !== 'settings') { location.hash = '#/settings'; return; }
+  if (isServer() && !session.checked) await checkSession();
+  if (base === 'login') { if (configured()) { location.hash = '#/'; return; } return viewLogin(); }
+  if (!configured() && base !== 'settings') { location.hash = isServer() ? '#/login' : '#/settings'; return; }
   try {
     switch (base) {
       case '': return await viewHome();
@@ -541,7 +575,7 @@ async function viewMessage(accId, id) {
     let html = m.html;
     const inline = (m.attachments || []).filter(a => a.inline && a.content_id && a.path && a.size < 3 * 1048576).slice(0, 12);
     for (const a of inline) {
-      try { const b = await fetchBlob(a.path); const du = await blobToDataUrl(b); html = html.split(`cid:${a.content_id}`).join(du); } catch {}
+      try { const b = await fetchBlob(dataPath(a.path)); const du = await blobToDataUrl(b); html = html.split(`cid:${a.content_id}`).join(du); } catch {}
     }
     const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${allowImages ? 'https: http:' : ''}; font-src data:;`;
     const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>body{font-family:Cairo,system-ui,sans-serif;margin:12px;word-break:break-word;color:#111;background:#fff} img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
@@ -575,8 +609,8 @@ async function viewMessage(accId, id) {
       toast('تم إرسال أمر الرد، سيُرسل خلال دقيقة تقريبًا'); $('#replyBox').classList.add('hidden');
     } catch (e) { toast(e.message, true); } finally { $('#rSend').disabled = false; }
   });
-  $('#aRaw')?.addEventListener('click', () => download(m.raw_path, `${id}.eml`));
-  $$('[data-dl]').forEach(b => b.onclick = () => { const a = m.attachments[+b.dataset.dl]; download(a.path, a.filename); });
+  $('#aRaw')?.addEventListener('click', () => download(dataPath(m.raw_path), `${id}.eml`));
+  $$('[data-dl]').forEach(b => b.onclick = () => { const a = m.attachments[+b.dataset.dl]; download(dataPath(a.path), a.filename); });
 }
 function attIcon(ct = '') { if (ct.startsWith('image/')) return '🖼'; if (ct.includes('pdf')) return '📕'; if (ct.includes('zip') || ct.includes('compressed')) return '🗜'; if (ct.includes('sheet') || ct.includes('excel') || ct.includes('csv')) return '📊'; if (ct.includes('word') || ct.includes('document')) return '📝'; return '📎'; }
 function blobToDataUrl(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); }); }
@@ -774,14 +808,54 @@ async function viewLog() {
   </div>`).join('') : '<div class="empty"><div class="big">🧾</div>لا توجد عمليات بعد</div>'}</div>`);
 }
 
+/* ========= تسجيل الدخول ========= */
+function viewLogin() {
+  $('#sideNav').innerHTML = ''; $('#bottomNav').innerHTML = '';
+  render(`<div style="max-width:420px;margin:8vh auto 0">
+    <div class="card">
+      <div class="row" style="gap:12px;margin-bottom:6px"><span class="avatar" style="background:var(--accent)">✉</span><div><h1 style="font-size:21px">تسجيل الدخول</h1><div class="sub">لوحة تحكم مراقب البريد</div></div></div>
+      <form id="loginForm" style="margin-top:14px">
+        <div class="field"><label for="lPass">كلمة السر</label><input class="input ltr" type="password" id="lPass" autocomplete="current-password" required autofocus></div>
+        <div id="lErr" class="notice err hidden"></div>
+        <button class="btn primary" id="lBtn" type="submit" style="width:100%">دخول</button>
+      </form>
+      <div class="sub" style="margin-top:12px">تبقى مسجّل الدخول على هذا الجهاز لمدة 30 يومًا.</div>
+    </div>
+    <div class="sub" style="text-align:center;margin-top:12px"><a href="#/settings">استخدام توكن GitHub بدلًا من كلمة السر</a></div>
+  </div>`);
+  $('#loginForm').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#lBtn'), err = $('#lErr');
+    btn.disabled = true; btn.textContent = 'جارٍ التحقق…'; err.classList.add('hidden');
+    try {
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#lPass').value }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `خطأ ${r.status}`);
+      if (settings.mode !== 'server') { settings.mode = 'server'; saveSettings(); }
+      session.checked = false; await checkSession();
+      cache.clear(); mem.accounts = null; mem.index.clear(); mem.config = null;
+      location.hash = '#/';
+    } catch (ex) {
+      err.textContent = ex.message; err.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'دخول'; $('#lPass').select();
+    }
+  };
+}
+async function logout() {
+  try { await fetch('/api/logout', { method: 'POST' }); } catch {}
+  session.authed = false; cache.clear(); mem.accounts = null; mem.index.clear(); mem.config = null;
+  location.hash = '#/login';
+}
+
 /* ========= الإعدادات ========= */
 function viewSettings() {
   const s = settings;
   render(`<div class="page-title"><h1>الإعدادات</h1></div>
-  ${!configured() ? '<div class="notice info">للبدء: أدخل اسم مستودع البيانات وتوكن GitHub. التوكن يُحفظ في متصفحك فقط ولا يُرسل لأي جهة غير GitHub.</div>' : ''}
+  ${isServer() ? `<div class="card" style="margin-bottom:14px"><div class="row" style="justify-content:space-between"><div><h3>الحساب</h3><div class="sub">${session.authed ? `مسجّل الدخول · البيانات من ${esc(settings.repo)}` : 'غير مسجّل الدخول'}</div></div>${session.authed ? '<button class="btn danger" id="sLogout">تسجيل الخروج</button>' : '<a class="btn primary" href="#/login">تسجيل الدخول</a>'}</div></div>` : ''}
+  ${!configured() && !isServer() ? '<div class="notice info">للبدء: أدخل اسم مستودع البيانات وتوكن GitHub. التوكن يُحفظ في متصفحك فقط ولا يُرسل لأي جهة غير GitHub.</div>' : ''}
   <div class="card">
     <div class="form-grid">
-      <div class="field"><label>مصدر البيانات</label><select class="input" id="sMode"><option value="github" ${s.mode === 'github' ? 'selected' : ''}>GitHub (موصى به)</option><option value="local" ${s.mode === 'local' ? 'selected' : ''}>ملفات محلية (عرض فقط)</option></select></div>
+      <div class="field"><label>مصدر البيانات</label><select class="input" id="sMode"><option value="server" ${s.mode === 'server' ? 'selected' : ''}>تسجيل الدخول بكلمة السر (موصى به)</option><option value="github" ${s.mode === 'github' ? 'selected' : ''}>توكن GitHub على هذا الجهاز</option><option value="local" ${s.mode === 'local' ? 'selected' : ''}>ملفات محلية (عرض فقط)</option></select></div>
       <div class="field"><label>المظهر</label><select class="input" id="sTheme"><option value="auto" ${s.theme === 'auto' ? 'selected' : ''}>تلقائي</option><option value="light" ${s.theme === 'light' ? 'selected' : ''}>فاتح</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>داكن</option></select></div>
       <div class="field gh"><label>مستودع البيانات (owner/repo)</label><input class="input ltr" id="sRepo" value="${esc(s.repo)}" placeholder="username/mail-data"><div class="hint">المستودع الخاص الذي يحوي accounts.json و index و messages.</div></div>
       <div class="field gh"><label>مستودع الكود (إن كان منفصلًا)</label><input class="input ltr" id="sCode" value="${esc(s.codeRepo || DEFAULTS.codeRepo)}" placeholder="cBadr/mailwatch"><div class="hint">المستودع العام الذي يحتوي الكود وتعمل فيه عمليات الفحص.</div></div>
@@ -792,17 +866,18 @@ function viewSettings() {
     </div>
     <div class="row"><button class="btn primary" id="sSave">💾 حفظ</button><button class="btn" id="sTest">🔌 اختبار الاتصال</button><span id="sResult" class="sub"></span></div>
   </div>
-  <div class="card"><h3>كيف تحصل على التوكن؟</h3>
+  <div class="card gh"><h3>كيف تحصل على التوكن؟</h3>
     <ol style="padding-inline-start:20px;margin:8px 0 0">
       <li>GitHub ← Settings ← Developer settings ← Personal access tokens ← <b>Fine-grained tokens</b> ← Generate new token.</li>
       <li>Repository access: اختر مستودع البيانات الخاص ومستودع الكود العام معًا.</li>
       <li>Permissions ← Repository: <b>Contents: Read and write</b>، <b>Actions: Read and write</b>.</li>
       <li>انسخ التوكن والصقه أعلاه. يُحفظ في هذا المتصفح فقط.</li>
     </ol></div>`);
-  function sync() { const gh = $('#sMode').value === 'github'; $$('.gh').forEach(e => e.classList.toggle('hidden', !gh)); $$('.lc').forEach(e => e.classList.toggle('hidden', gh)); }
+  function sync() { const m = $('#sMode').value; $$('.gh').forEach(e => e.classList.toggle('hidden', m !== 'github')); $$('.lc').forEach(e => e.classList.toggle('hidden', m !== 'local')); }
+  $('#sLogout')?.addEventListener('click', logout);
   $('#sMode').onchange = sync; sync();
   const read = () => { settings = { ...settings, mode: $('#sMode').value, theme: $('#sTheme').value, repo: $('#sRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), codeRepo: $('#sCode').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), branch: $('#sBranch').value.trim() || 'main', prefix: $('#sPrefix').value.trim().replace(/^\/+|\/+$/g, ''), token: $('#sToken').value.trim(), localBase: $('#sLocal').value.trim() || '..' }; };
-  $('#sSave').onclick = () => { read(); saveSettings(); applyTheme(); cache.clear(); mem.accounts = null; mem.index.clear(); mem.config = null; toast('تم الحفظ'); if (configured()) location.hash = '#/'; };
+  $('#sSave').onclick = async () => { read(); saveSettings(); applyTheme(); cache.clear(); mem.accounts = null; mem.index.clear(); mem.config = null; toast('تم الحفظ'); if (isServer()) { session.checked = false; await checkSession(); location.hash = session.authed ? '#/' : '#/login'; } else if (configured()) location.hash = '#/'; };
   $('#sTest').onclick = async () => {
     read(); applyTheme(); const out = $('#sResult'); out.textContent = 'جارٍ الاختبار…';
     try {
