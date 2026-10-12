@@ -1,0 +1,66 @@
+name: تنفيذ أمر
+
+# تستدعيه لوحة التحكم عبر repository_dispatch بعد كتابة الأمر في actions/queue
+# داخل مستودع البيانات الخاص، فلا يظهر محتوى الأمر (نص الرد مثلًا) في سجلات هذا المستودع.
+on:
+  repository_dispatch:
+    types: [mail-action]
+  workflow_dispatch:
+
+concurrency:
+  group: mailwatch-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  DATA_REPO: ${{ vars.DATA_REPO || 'cBadr/Hamza' }}
+  PUBLIC_LOGS: "1"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: جلب الكود
+        uses: actions/checkout@v4
+
+      - name: جلب مستودع البيانات الخاص
+        if: ${{ env.DATA_REPO != github.repository }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DATA_REPO }}
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data_repo
+
+      - name: تحديد المسارات
+        run: |
+          if [ -d data_repo/.git ]; then
+            echo "DATA_DIR=data_repo/data" >> "$GITHUB_ENV"
+            echo "DATA_REPO_DIR=data_repo" >> "$GITHUB_ENV"
+          else
+            echo "DATA_DIR=data" >> "$GITHUB_ENV"
+          fi
+
+      - name: إعداد Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: تثبيت المتطلبات
+        run: pip install -q -r requirements.txt
+
+      - name: تنفيذ الأوامر
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ACCOUNT_PASSWORDS: ${{ secrets.ACCOUNT_PASSWORDS }}
+        run: |
+          python -m mailwatch queue || true
+          python -m mailwatch action --event --source dispatch || true
+
+      - name: حفظ البيانات
+        if: always()
+        run: bash scripts/commit_data.sh "تنفيذ أمر $(date -u +'%Y-%m-%d %H:%M UTC')"

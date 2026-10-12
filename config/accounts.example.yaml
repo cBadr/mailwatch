@@ -1,0 +1,88 @@
+# ملف إعدادات الحسابات — انسخه إلى config/accounts.yaml وعدّله.
+# كل حساب له إعداداته الخاصة (الاتصال، المجلدات، الفلاتر، التنبيهات).
+#
+# كلمات المرور: يمكن وضعها هنا مباشرة (المستودع خاص) أو في GitHub Secrets:
+#   - ACCOUNT_PASSWORDS = {"hamza_gmail": "xxxx", "work_outlook": "yyyy"}
+#   - أو متغير لكل حساب: PASS_HAMZA_GMAIL
+#
+# المزودون الجاهزون: gmail, yahoo, outlook, icloud, zoho, custom
+#   gmail  : فعّل التحقق بخطوتين ثم أنشئ "App password" من https://myaccount.google.com/apppasswords
+#   yahoo  : إعدادات الحساب ← الأمان ← "Generate app password"
+#   outlook: الحسابات الشخصية تحتاج OAuth2 (انظر tools/oauth_setup.py). حسابات الشركات قد تقبل كلمة المرور.
+#   icloud : https://appleid.apple.com ← App-Specific Passwords
+#   custom : حدد imap_host و smtp_host بنفسك.
+
+defaults:
+  folders: [INBOX]          # المجلدات التي تُفحص
+  archive: all              # all = حفظ كل الرسائل | matched = حفظ المطابقة للفلاتر فقط
+  notify: matched           # matched = تنبيه للمطابقة فقط | all = لكل رسالة | none = بدون تنبيه
+  telegram_chat_id: ""      # إن تُرك فارغًا يُستخدم TELEGRAM_CHAT_ID من الـ Secrets
+  store_raw: true           # حفظ النسخة الأصلية .eml
+  extract_attachments: true # حفظ المرفقات كملفات منفصلة
+  # فلاتر تُطبق على كل الحسابات (تُضاف إلى فلاتر كل حساب)
+  filters:
+    - name: كلمة مهمة
+      anywhere: ["عاجل", "urgent"]
+
+accounts:
+  - id: hamza_gmail                 # حروف إنجليزية وأرقام و _ - فقط
+    name: حمزة - Gmail
+    provider: gmail
+    email: example@gmail.com
+    password: "xxxx xxxx xxxx xxxx"  # App password
+    folders: [INBOX]
+    archive: all
+    notify: matched
+    telegram_chat_id: ""
+    signature: |
+      مع تحياتي،
+      حمزة
+    filters:
+      - name: البنك
+        from: ["@bank.com", "alerts@"]        # تطابق جزئي في اسم/عنوان المرسل
+        subject: ["تحويل", "حوالة", "transfer"]
+        match: any                            # any = يكفي حقل واحد | all = كل الحقول المذكورة
+      - name: عميل مهم
+        anywhere: ["شركة النور", "Al Nour"]   # في المرسل أو العنوان أو النص
+      - name: فواتير
+        subject: ["invoice", "فاتورة"]
+        body: ["رقم الفاتورة", "invoice no"]
+        match: all
+
+  - id: work_yahoo
+    name: العمل - Yahoo
+    provider: yahoo
+    email: example@yahoo.com
+    password_env: PASS_WORK_YAHOO   # اسم متغير بيئة/Secret يحتوي كلمة المرور
+    notify: all
+
+  - id: personal_outlook
+    name: Outlook شخصي
+    provider: outlook
+    email: example@outlook.com
+    auth: oauth2
+    oauth2:
+      provider: microsoft
+      client_id: "00000000-0000-0000-0000-000000000000"
+      refresh_token: "..."          # من tools/oauth_setup.py microsoft --client-id ...
+    enabled: false
+
+  - id: company_domain
+    name: بريد الشركة
+    provider: custom
+    email: info@example.com
+    username: info@example.com
+    password: "secret"
+    custom:
+      imap_host: mail.example.com
+      imap_port: 993
+      smtp_host: mail.example.com
+      smtp_port: 465
+      smtp_security: ssl            # ssl | starttls | none
+      trash: Trash
+      archive_folder: Archive
+    folders: [INBOX, Support]
+    archive: matched
+    filters:
+      - name: دعم فني
+        to: ["support@example.com"]

@@ -1,0 +1,82 @@
+name: فحص البريد
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"      # كل 5 دقائق (أقل مدة يسمح بها GitHub، وقد يتأخر وقت الضغط)
+  workflow_dispatch:
+    inputs:
+      backfill_batch:
+        description: "عدد الرسائل القديمة لكل مجلد في هذه التشغيلة"
+        default: "100"
+      time_budget:
+        description: "الحد الزمني بالدقائق لسحب الأرشيف القديم"
+        default: "3"
+
+concurrency:
+  group: mailwatch-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+# مستودع البيانات الخاص (غيّره بمتغير DATA_REPO في إعدادات المستودع إن لزم).
+# لو كان نفس هذا المستودع يعمل في وضع المستودع الواحد.
+env:
+  DATA_REPO: ${{ vars.DATA_REPO || 'cBadr/Hamza' }}
+  PUBLIC_LOGS: "1"
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: جلب الكود
+        uses: actions/checkout@v4
+
+      - name: جلب مستودع البيانات الخاص
+        if: ${{ env.DATA_REPO != github.repository }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DATA_REPO }}
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data_repo
+
+      - name: تحديد المسارات
+        run: |
+          if [ -d data_repo/.git ]; then
+            echo "DATA_DIR=data_repo/data" >> "$GITHUB_ENV"
+            echo "DATA_REPO_DIR=data_repo" >> "$GITHUB_ENV"
+          else
+            echo "DATA_DIR=data" >> "$GITHUB_ENV"
+          fi
+
+      - name: إعداد Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: تثبيت المتطلبات
+        run: pip install -q -r requirements.txt
+
+      - name: فحص البريد
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ACCOUNT_PASSWORDS: ${{ secrets.ACCOUNT_PASSWORDS }}
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL || 'https://hamza-mail.vercel.app' }}
+          BACKFILL_BATCH: ${{ github.event.inputs.backfill_batch || vars.BACKFILL_BATCH || '100' }}
+          TIME_BUDGET_MIN: ${{ github.event.inputs.time_budget || vars.TIME_BUDGET_MIN || '3' }}
+          WORKERS: ${{ vars.WORKERS || '8' }}
+        run: python -m mailwatch poll
+
+      - name: حفظ البيانات
+        if: always()
+        run: bash scripts/commit_data.sh "فحص البريد $(date -u +'%Y-%m-%d %H:%M UTC')"
+
+      - name: إبقاء الجدولة نشطة (GitHub يوقفها بعد 60 يومًا بلا نشاط)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/poll.yml/enable" || true

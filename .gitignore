@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.tmp
+.venv/
+venv/
+.env
+.claude/
+# البيانات والإعدادات تعيش في مستودع البيانات الخاص فقط، ولا تُرفع أبدًا إلى مستودع الكود العام
+data/
+data_repo/
+config/accounts.yaml
+config/accounts.yml
+config/accounts.json
+# ملفات اختبار محلية
+sample/

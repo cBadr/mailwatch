@@ -1,0 +1,90 @@
+name: سحب الأرشيف القديم
+
+# الفحص الدوري يسحب الأرشيف القديم تدريجيًا بنفسه. استخدم هذا للتسريع.
+# مع chain=true يعيد تشغيل نفسه تلقائيًا حتى يكتمل السحب.
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "الحد الزمني لهذه التشغيلة بالدقائق"
+        default: "20"
+      account:
+        description: "معرّف حساب معين (اتركه فارغًا لكل الحسابات)"
+        default: ""
+      chain:
+        description: "إعادة التشغيل تلقائيًا حتى الاكتمال (true/false)"
+        default: "true"
+
+concurrency:
+  group: mailwatch-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  DATA_REPO: ${{ vars.DATA_REPO || 'cBadr/Hamza' }}
+  PUBLIC_LOGS: "1"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: جلب الكود
+        uses: actions/checkout@v4
+
+      - name: جلب مستودع البيانات الخاص
+        if: ${{ env.DATA_REPO != github.repository }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DATA_REPO }}
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data_repo
+
+      - name: تحديد المسارات
+        run: |
+          if [ -d data_repo/.git ]; then
+            echo "DATA_DIR=data_repo/data" >> "$GITHUB_ENV"
+            echo "DATA_REPO_DIR=data_repo" >> "$GITHUB_ENV"
+          else
+            echo "DATA_DIR=data" >> "$GITHUB_ENV"
+          fi
+
+      - name: إعداد Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: تثبيت المتطلبات
+        run: pip install -q -r requirements.txt
+
+      - name: سحب الأرشيف
+        id: backfill
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ACCOUNT_PASSWORDS: ${{ secrets.ACCOUNT_PASSWORDS }}
+          WORKERS: ${{ vars.WORKERS || '4' }}
+          MINUTES: ${{ github.event.inputs.minutes }}
+          ACCOUNT: ${{ github.event.inputs.account }}
+        run: |
+          ARGS=(--time-budget "$MINUTES")
+          if [ -n "$ACCOUNT" ]; then ARGS+=(--account "$ACCOUNT"); fi
+          python -m mailwatch backfill "${ARGS[@]}"
+
+      - name: حفظ البيانات
+        if: always()
+        run: bash scripts/commit_data.sh "سحب الأرشيف $(date -u +'%Y-%m-%d %H:%M UTC')"
+
+      - name: إعادة التشغيل حتى الاكتمال
+        if: ${{ github.event.inputs.chain == 'true' && steps.backfill.outcome == 'success' && steps.backfill.outputs.backfill_remaining != '' && steps.backfill.outputs.backfill_remaining != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MINUTES: ${{ github.event.inputs.minutes }}
+          ACCOUNT: ${{ github.event.inputs.account }}
+        run: |
+          echo "متبقي: ${{ steps.backfill.outputs.backfill_remaining }} رسالة — إعادة التشغيل"
+          gh workflow run backfill.yml -f minutes="$MINUTES" -f account="$ACCOUNT" -f chain=true

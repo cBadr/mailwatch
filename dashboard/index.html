@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>مراقب البريد</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<style>
+:root{
+  --bg:#f3f5fa; --card:#ffffff; --text:#171b26; --muted:#6a7282; --line:#e4e8f0;
+  --accent:#0e7c86; --accent-ink:#ffffff; --accent-soft:#e3f4f5; --accent-soft-ink:#0b5d65;
+  --danger:#c62f2f; --danger-soft:#fdeaea; --ok:#1f9d5c; --ok-soft:#e5f6ec; --warn:#c77700; --warn-soft:#fff3df;
+  --chip:#eef1f6; --hover:#f6f8fc; --unread:#0e7c86;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 10px 28px -16px rgba(16,24,40,.18);
+  --radius:16px; --nav-h:64px;
+}
+:root[data-theme="dark"]{
+  --bg:#0e1117; --card:#161a23; --text:#e8eaf0; --muted:#98a1b3; --line:#262c3a;
+  --accent:#36c3cf; --accent-ink:#06282c; --accent-soft:#113a3f; --accent-soft-ink:#9fe3e9;
+  --danger:#ff6b6b; --danger-soft:#3a1d1d; --ok:#4cd68a; --ok-soft:#163626; --warn:#ffb454; --warn-soft:#3a2a10;
+  --chip:#222837; --hover:#1c2130; --unread:#36c3cf;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"Cairo",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100dvh}
+a{color:var(--accent);text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;line-height:1.3}
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);height:60px;display:flex;align-items:center;gap:12px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px}
+.brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#5fb8c7);display:grid;place-items:center;color:#fff;font-size:18px}
+.topbar .grow{flex:1}
+.iconbtn{border:1px solid var(--line);background:var(--card);border-radius:12px;width:40px;height:40px;display:grid;place-items:center;cursor:pointer;font-size:18px}
+.iconbtn:hover{background:var(--hover)}
+.layout{display:grid;grid-template-columns:1fr;max-width:1180px;margin:0 auto}
+.side{display:none}
+main{padding:16px 16px calc(var(--nav-h) + 24px);min-width:0}
+.bottomnav{position:fixed;bottom:0;inset-inline:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--card);border-top:1px solid var(--line);display:flex;z-index:20}
+.bottomnav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11.5px;color:var(--muted);font-weight:600}
+.bottomnav a .ic{font-size:21px;line-height:1}
+.bottomnav a.active{color:var(--accent)}
+@media (min-width:960px){
+  .layout{grid-template-columns:240px 1fr;gap:24px;padding:0 20px}
+  .side{display:block;position:sticky;top:76px;align-self:start;padding:8px 0}
+  .side a{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;color:var(--text);font-weight:600;margin-bottom:4px}
+  .side a .ic{font-size:19px;width:24px;text-align:center}
+  .side a:hover{background:var(--hover)}
+  .side a.active{background:var(--accent-soft);color:var(--accent-soft-ink)}
+  .bottomnav{display:none}
+  main{padding:20px 0 40px}
+}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+.card + .card{margin-top:14px}
+.page-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 14px;flex-wrap:wrap}
+.page-title h1{font-size:22px;font-weight:800}
+.sub{color:var(--muted);font-size:13px}
+.grid{display:grid;gap:12px}
+.grid.stats{grid-template-columns:repeat(2,1fr)}
+@media (min-width:700px){.grid.stats{grid-template-columns:repeat(4,1fr)}}
+.stat{padding:14px 16px}
+.stat .v{font-size:26px;font-weight:800;line-height:1.2}
+.stat .l{color:var(--muted);font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:9px 14px;font-weight:700;cursor:pointer;white-space:nowrap;min-height:40px}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,var(--line))}
+.btn.sm{padding:6px 10px;min-height:34px;font-size:13.5px;border-radius:10px}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.chip.on{background:var(--accent-soft);color:var(--accent-soft-ink)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.err{background:var(--danger-soft);color:var(--danger)}
+.chip.tag{background:var(--accent-soft);color:var(--accent-soft-ink)}
+.chip.btn{cursor:pointer;border:0}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.field label{font-weight:700;font-size:13.5px}
+.field .hint{color:var(--muted);font-size:12.5px}
+.input,select.input,textarea.input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 12px;min-height:44px;outline:none}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+textarea.input{min-height:120px;resize:vertical}
+.form-grid{display:grid;gap:0 14px;grid-template-columns:1fr}
+@media (min-width:700px){.form-grid{grid-template-columns:1fr 1fr}.form-grid .full{grid-column:1/-1}}
+.list{display:flex;flex-direction:column}
+.item{display:flex;gap:12px;padding:12px 6px;border-bottom:1px solid var(--line);cursor:pointer;align-items:flex-start}
+.item:last-child{border-bottom:0}
+.item:hover{background:var(--hover)}
+.avatar{width:42px;height:42px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:800;color:#fff;font-size:17px}
+.item .body{flex:1;min-width:0}
+.item .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.item .from{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .time{color:var(--muted);font-size:12px;flex:none}
+.item .subject{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .snippet{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item.unread .from,.item.unread .subject{font-weight:800}
+.item.unread .dot{width:9px;height:9px;border-radius:50%;background:var(--unread);flex:none;margin-top:16px}
+.item .dot{width:9px;height:9px;flex:none;margin-top:16px}
+.item .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.toolbar .input{min-height:40px;padding:7px 12px}
+.toolbar select.input{width:auto}
+.toolbar .search{flex:1;min-width:160px}
+.empty{text-align:center;color:var(--muted);padding:40px 10px}
+.empty .big{font-size:40px}
+.msg-head h2{font-size:19px;font-weight:800;margin-bottom:8px;word-break:break-word}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13.5px;margin-top:10px}
+.kv .k{color:var(--muted);font-weight:700}
+.kv .v{word-break:break-word}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.tabs button{border:0;background:none;padding:8px 14px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.active{color:var(--accent);border-color:var(--accent)}
+.mailframe{width:100%;height:70vh;border:1px solid var(--line);border-radius:12px;background:#fff;resize:vertical}
+.pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;margin:0;padding:4px 2px}
+.att{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:12px;margin-top:8px}
+.att .ic{font-size:22px}
+.att .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.att .s{color:var(--muted);font-size:12.5px}
+.acc-card{display:flex;gap:12px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line)}
+.acc-card:last-child{border-bottom:0}
+.acc-card .info{flex:1;min-width:0}
+.acc-card .name{font-weight:800}
+.acc-card .mail{color:var(--muted);font-size:13px;direction:ltr;text-align:right;unicode-bidi:plaintext}
+.bar{height:6px;background:var(--chip);border-radius:99px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.filter-row{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--bg)}
+.filter-row .form-grid{grid-template-columns:1fr 1fr}
+.toast{position:fixed;bottom:calc(var(--nav-h) + 16px);inset-inline:16px;margin:0 auto;max-width:480px;background:var(--text);color:var(--bg);padding:12px 16px;border-radius:14px;box-shadow:var(--shadow);z-index:50;font-weight:600;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.toast.err{background:var(--danger);color:#fff}
+@media (min-width:960px){.toast{bottom:24px}}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading{display:flex;align-items:center;gap:10px;color:var(--muted);padding:30px;justify-content:center}
+.notice{border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px}
+.notice.warn{background:var(--warn-soft);color:var(--warn)}
+.notice.info{background:var(--accent-soft);color:var(--accent-soft-ink)}
+.notice.err{background:var(--danger-soft);color:var(--danger)}
+.ltr{direction:ltr;unicode-bidi:isolate;text-align:left}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px}
+.log-row{padding:10px 4px;border-bottom:1px solid var(--line);font-size:13.5px}
+.log-row:last-child{border-bottom:0}
+.muted{color:var(--muted)}
+.hidden{display:none !important}
+details summary{cursor:pointer;font-weight:700}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">✉</span><span>مراقب البريد</span></div>
+  <div class="grow"></div>
+  <button class="iconbtn" id="btnRefresh" title="تحديث البيانات">⟳</button>
+  <button class="iconbtn" id="btnTheme" title="الوضع الليلي">◐</button>
+</header>
+<div class="layout">
+  <nav class="side" id="sideNav"></nav>
+  <main id="view"><div class="loading"><span class="spinner"></span> جارٍ التحميل…</div></main>
+</div>
+<nav class="bottomnav" id="bottomNav"></nav>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ========= أدوات عامة ========= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DEFAULTS = { mode: 'github', repo: 'cBadr/Hamza', codeRepo: 'cBadr/mailwatch', branch: 'main', token: '', prefix: 'data', localBase: '..', theme: 'auto' };
+let settings = loadSettings();
+const cache = new Map();          // url -> {etag, text}
+const mem = { accounts: null, index: new Map(), config: null };
+const NAV = [
+  ['', '🏠', 'الرئيسية'], ['mail', '📥', 'الرسائل'], ['compose', '✍️', 'إنشاء'],
+  ['accounts', '👥', 'الحسابات'], ['log', '🧾', 'السجل'], ['settings', '⚙️', 'الإعدادات'],
+];
+const PROVIDERS = { gmail: 'Gmail', yahoo: 'Yahoo', outlook: 'Outlook', icloud: 'iCloud', zoho: 'Zoho', custom: 'مخصص (IMAP)' };
+const COLORS = ['#0e7c86','#6d5ce7','#d9480f','#1f9d5c','#c2255c','#2b6cb0','#b7791f','#5a67d8'];
+
+function loadSettings() { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('mailwatch.settings') || '{}') }; } catch { return { ...DEFAULTS }; } }
+function saveSettings() { try { localStorage.setItem('mailwatch.settings', JSON.stringify(settings)); } catch {} }
+function applyTheme() {
+  let t = settings.theme;
+  if (t === 'auto') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+}
+let toastTimer;
+function toast(msg, isErr = false) {
+  const el = $('#toast'); el.textContent = msg; el.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = 'toast', isErr ? 6000 : 3200);
+}
+const fmtDT = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+const fmtD = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' });
+const fmtT = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
+function fdate(iso) { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? iso : fmtDT.format(d); }
+function fshort(iso) { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; const now = new Date(); return d.toDateString() === now.toDateString() ? fmtT.format(d) : fmtD.format(d); }
+function ago(iso) {
+  if (!iso) return 'لم يُفحص بعد'; const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return 'الآن'; if (s < 3600) return `منذ ${Math.floor(s / 60)} دقيقة`; if (s < 86400) return `منذ ${Math.floor(s / 3600)} ساعة`; return `منذ ${Math.floor(s / 86400)} يوم`;
+}
+function fsize(b) { if (!b && b !== 0) return ''; if (b < 1024) return b + ' بايت'; if (b < 1048576) return (b / 1024).toFixed(0) + ' ك.ب'; return (b / 1048576).toFixed(1) + ' م.ب'; }
+function addr(a) { if (!a) return ''; return a.name ? `${a.name}` : (a.email || ''); }
+function addrFull(a) { if (!a) return ''; return a.name && a.email ? `${a.name} <${a.email}>` : (a.email || a.name || ''); }
+function colorFor(s) { let h = 0; for (const c of String(s || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORS[h % COLORS.length]; }
+function initial(a) { const s = (a?.name || a?.email || '?').trim(); return s[0]?.toUpperCase() || '?'; }
+const DIAC = /[ؐ-ًؚ-ٰٟۖ-ۭـ]/g;
+function norm(s) { return String(s || '').replace(DIAC, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').toLowerCase(); }
+function monthLabel(m) { const [y, mo] = m.split('-'); const names = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']; return `${names[+mo - 1] || mo} ${y}`; }
+function currentMonth() { const d = new Date(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; }
+
+/* ========= مصدر البيانات (GitHub API أو ملفات محلية) ========= */
+const isLocal = () => settings.mode === 'local';
+function ghHeaders(raw) {
+  const h = { 'Accept': raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  if (settings.token) h.Authorization = 'Bearer ' + settings.token;
+  return h;
+}
+const encPath = p => p.split('/').map(encodeURIComponent).join('/');
+function dataPath(path) { return settings.prefix ? `${settings.prefix.replace(/\/+$/, '')}/${path}` : path; }
+function fileUrl(path) {
+  if (isLocal()) return `${settings.localBase.replace(/\/+$/, '')}/${encPath(path)}`;
+  return `https://api.github.com/repos/${settings.repo}/contents/${encPath(path)}?ref=${encodeURIComponent(settings.branch)}`;
+}
+async function errMsg(r) {
+  let m = `خطأ ${r.status}`;
+  try { const j = await r.json(); if (j.message) m += `: ${j.message}`; } catch {}
+  if (r.status === 401) m = 'التوكن غير صالح أو منتهي الصلاحية';
+  if (r.status === 403) m += ' — الصلاحيات غير كافية أو تجاوزت حد الطلبات';
+  if (r.status === 404) m = 'غير موجود (تحقق من اسم المستودع والفرع والمسار)';
+  return m;
+}
+async function fetchText(path, optional = true) {
+  const url = fileUrl(path);
+  const headers = isLocal() ? {} : ghHeaders(true);
+  const c = cache.get(url);
+  if (c && !isLocal()) headers['If-None-Match'] = c.etag;
+  const r = await fetch(url, { headers, cache: 'no-store' });
+  if (r.status === 304 && c) return c.text;
+  if (r.status === 404) { if (optional) return null; throw new Error(await errMsg(r)); }
+  if (!r.ok) throw new Error(await errMsg(r));
+  const text = await r.text();
+  const etag = r.headers.get('ETag');
+  if (etag && !isLocal()) cache.set(url, { etag, text });
+  return text;
+}
+async function fetchJSON(path, optional = true) { const t = await fetchText(path, optional); return t == null ? null : JSON.parse(t); }
+async function fetchBlob(path) {
+  const r = await fetch(fileUrl(path), { headers: isLocal() ? {} : ghHeaders(true) });
+  if (!r.ok) throw new Error(await errMsg(r));
+  return r.blob();
+}
+async function ghApi(apiPath, { method = 'GET', body, repo } = {}) {
+  if (isLocal()) throw new Error('هذه العملية تحتاج وضع GitHub (الإعدادات)');
+  if (!settings.token) throw new Error('أضف توكن GitHub في الإعدادات أولًا');
+  const r = await fetch(`https://api.github.com/repos/${repo || settings.repo}/${apiPath}`, {
+    method, headers: { ...ghHeaders(false), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(await errMsg(r));
+  if (r.status === 204) return null;
+  return r.json();
+}
+function b64utf8(str) { const bytes = new TextEncoder().encode(str); let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b)); return btoa(bin); }
+async function putFile(path, text, message) {
+  let sha;
+  try { const meta = await ghApi(`contents/${encPath(path)}?ref=${encodeURIComponent(settings.branch)}`); sha = meta?.sha; } catch {}
+  return ghApi(`contents/${encPath(path)}`, { method: 'PUT', body: { message, content: b64utf8(text), branch: settings.branch, ...(sha ? { sha } : {}) } });
+}
+const codeRepo = () => settings.codeRepo || DEFAULTS.codeRepo || settings.repo;
+// الأمر يُكتب في مستودع البيانات الخاص ثم يُطلب تشغيل التنفيذ في مستودع الكود،
+// حتى لا يظهر محتوى الأمر (مثل نص الرد) في سجلات مستودع الكود العام.
+async function dispatchAction(payload) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const name = `${stamp}-${Math.random().toString(36).slice(2, 8)}.json`;
+  await putFile(dataPath(`actions/queue/${name}`), JSON.stringify(payload, null, 2), `أمر جديد: ${payload.action}`);
+  await ghApi('dispatches', { method: 'POST', repo: codeRepo(), body: { event_type: 'mail-action' } });
+}
+async function runWorkflow(file, inputs = {}) {
+  await ghApi(`actions/workflows/${file}/dispatches`, { method: 'POST', repo: codeRepo(), body: { ref: settings.branch, inputs } });
+}
+function configured() { return isLocal() || (settings.repo && settings.token); }
+
+/* ========= تحميل البيانات ========= */
+async function loadAccounts(force = false) {
+  if (mem.accounts && !force) return mem.accounts;
+  const data = await fetchJSON(dataPath('accounts.json'));
+  mem.accounts = data || { updated: null, accounts: [], totals: {} };
+  return mem.accounts;
+}
+function accById(id) { return (mem.accounts?.accounts || []).find(a => a.id === id); }
+async function loadIndex(accId, month, force = false) {
+  const key = `${accId}/${month}`;
+  if (mem.index.has(key) && !force) return mem.index.get(key);
+  const items = (await fetchJSON(dataPath(`index/${accId}/${month}.json`))) || [];
+  items.forEach(e => { e.account = accId; });
+  mem.index.set(key, items);
+  return items;
+}
+async function pool(tasks, n = 6) {
+  const out = []; let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, async () => { while (i < tasks.length) { const k = i++; out[k] = await tasks[k](); } }));
+  return out;
+}
+
+/* ========= التوجيه ========= */
+function navHtml(active, cls) {
+  return NAV.map(([r, ic, l]) => `<a href="#/${r}" class="${active === r ? 'active' : ''}"><span class="ic">${ic}</span><span>${l}</span></a>`).join('');
+}
+function setNav(active) { $('#sideNav').innerHTML = navHtml(active); $('#bottomNav').innerHTML = navHtml(active); }
+function render(html) { $('#view').innerHTML = html; window.scrollTo({ top: 0 }); }
+function loadingHtml(t = 'جارٍ التحميل…') { return `<div class="loading"><span class="spinner"></span> ${t}</div>`; }
+function errorHtml(e) { return `<div class="notice err">⚠️ ${esc(e.message || e)}</div>`; }
+async function route() {
+  const h = location.hash.replace(/^#\/?/, '');
+  const [name, ...rest] = h.split('/');
+  const base = (name || '').split('?')[0];
+  setNav(['msg'].includes(base) ? 'mail' : (base === 'account' ? 'accounts' : base));
+  if (!configured() && base !== 'settings') { location.hash = '#/settings'; return; }
+  try {
+    switch (base) {
+      case '': return await viewHome();
+      case 'mail': return await viewMail();
+      case 'msg': return await viewMessage(rest[0], rest[1]);
+      case 'accounts': return await viewAccounts();
+      case 'account': return await viewAccountEdit(rest[0] === 'new' ? null : decodeURIComponent(rest[0] || ''));
+      case 'compose': return await viewCompose(rest[0]);
+      case 'log': return await viewLog();
+      case 'settings': return viewSettings();
+      default: location.hash = '#/';
+    }
+  } catch (e) { console.error(e); render(errorHtml(e)); }
+}
+
+/* ========= الرئيسية ========= */
+async function viewHome() {
+  render(loadingHtml());
+  const data = await loadAccounts();
+  const t = data.totals || {}; const accs = data.accounts || [];
+  const run = data.last_run || {};
+  const remaining = t.backfill_remaining || 0;
+  render(`
+  <div class="page-title"><div><h1>الرئيسية</h1><div class="sub">آخر فحص: ${esc(ago(data.updated))} · ${esc(fdate(data.updated))}</div></div>
+    <div class="row"><button class="btn primary" id="btnRun" ${isLocal() ? 'disabled' : ''}>▶ تشغيل الفحص الآن</button></div></div>
+  ${!accs.length ? `<div class="notice info">لا توجد بيانات بعد. أضف حسابًا من صفحة الحسابات وانتظر أول دورة فحص (حتى 15 دقيقة).</div>` : ''}
+  <div class="grid stats">
+    <a class="card stat" href="#/mail?m=all" style="color:inherit"><div class="v">${t.total ?? 0}</div><div class="l">رسالة محفوظة ←</div></a>
+    <a class="card stat" href="#/mail?matched=1" style="color:inherit"><div class="v">${t.matched ?? 0}</div><div class="l">مطابقة للفلاتر ←</div></a>
+    <a class="card stat" href="#/mail?unread=1" style="color:inherit"><div class="v">${t.unread ?? 0}</div><div class="l">غير مقروءة ←</div></a>
+    <div class="card stat"><div class="v">${t.enabled ?? accs.length}<span class="muted" style="font-size:14px">/${accs.length}</span></div><div class="l">حساب نشط</div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="row" style="justify-content:space-between"><h3>آخر دورة فحص</h3><a href="#/log" class="sub">السجل ←</a></div>
+    <div class="row" style="margin-top:8px">
+      <span class="chip">📩 جديدة: ${run.new ?? 0}</span><span class="chip">🏷 مطابقة: ${run.matched ?? 0}</span>
+      <span class="chip">🔔 تنبيهات: ${run.notified ?? 0}</span><span class="chip">📦 من الأرشيف: ${run.backfilled ?? 0}</span>
+      ${t.errors ? `<span class="chip err">⚠️ حسابات بها خطأ: ${t.errors}</span>` : ''}
+      ${remaining ? `<span class="chip warn">⏳ متبقي من الأرشيف القديم: ${remaining}</span>` : ''}
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h3>الحسابات</h3><a href="#/accounts" class="sub">إدارة ←</a></div>
+    <div class="list">${accs.map(accCardHtml).join('') || '<div class="empty">لا توجد حسابات</div>'}</div>
+  </div>`);
+  $('#btnRun')?.addEventListener('click', async () => {
+    try { await runWorkflow('poll.yml'); toast('تم طلب تشغيل الفحص، سيبدأ خلال دقيقة تقريبًا'); } catch (e) { toast(e.message, true); }
+  });
+}
+function accCardHtml(a) {
+  const c = a.counts || {}; const bf = a.backfill || {};
+  const pct = bf.total ? Math.min(100, Math.round(100 * (bf.done || 0) / bf.total)) : 100;
+  const status = !a.enabled ? '<span class="chip">⏸ معطّل</span>' : a.last_error ? `<span class="chip err" title="${esc(a.last_error)}">⚠️ خطأ</span>` : '<span class="chip ok">✅ يعمل</span>';
+  return `<a class="acc-card" href="#/mail?acc=${encodeURIComponent(a.id)}" style="color:inherit">
+    <div class="avatar" style="background:${colorFor(a.id)}">${esc(initial({ name: a.name }))}</div>
+    <div class="info"><div class="row" style="gap:8px"><span class="name">${esc(a.name)}</span>${status}</div>
+      <div class="mail">${esc(a.email)}</div>
+      <div class="sub">${c.total ?? 0} رسالة · ${c.unread ?? 0} غير مقروءة · ${c.matched ?? 0} مطابقة · ${esc(ago(a.last_check))}</div>
+      ${bf.remaining ? `<div class="bar" title="سحب الأرشيف القديم ${pct}%"><i style="width:${pct}%"></i></div><div class="sub">سحب الأرشيف القديم: ${pct}% (متبقي ${bf.remaining})</div>` : ''}
+      ${a.last_error ? `<div class="sub" style="color:var(--danger)">${esc(a.last_error)}</div>` : ''}
+    </div></a>`;
+}
+
+/* ========= الرسائل ========= */
+const mailState = { acc: 'all', month: '', q: '', matched: false, unread: false, att: false, limit: 80 };
+function parseQuery() { const q = location.hash.split('?')[1]; return Object.fromEntries(new URLSearchParams(q || '')); }
+async function viewMail() {
+  const qs = parseQuery();
+  if (qs.acc) mailState.acc = qs.acc;
+  if (qs.m) mailState.month = qs.m;
+  for (const f of ['matched', 'unread', 'att']) if (qs[f] === '1') { mailState[f] = true; mailState.month = 'all'; }
+  render(loadingHtml());
+  const data = await loadAccounts();
+  const accs = data.accounts || [];
+  const months = Array.from(new Set(accs.flatMap(a => a.months || []))).sort().reverse();
+  if (mailState.month !== 'all' && (!mailState.month || !months.includes(mailState.month))) mailState.month = months[0] || currentMonth();
+  render(`
+  <div class="page-title"><h1>الرسائل</h1><a class="btn sm" href="#/compose">✍️ رسالة جديدة</a></div>
+  <div class="card">
+    <div class="toolbar">
+      <select class="input" id="fAcc"><option value="all">كل الحسابات</option>${accs.map(a => `<option value="${esc(a.id)}" ${mailState.acc === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select>
+      <select class="input" id="fMonth"><option value="all" ${mailState.month === 'all' ? 'selected' : ''}>كل الفترات</option>${(months.length ? months : (mailState.month === 'all' ? [] : [mailState.month])).map(m => `<option value="${m}" ${m === mailState.month ? 'selected' : ''}>${esc(monthLabel(m))}</option>`).join('')}</select>
+      <input class="input search" id="fQ" placeholder="بحث في المرسل أو العنوان أو النص…" value="${esc(mailState.q)}">
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="chip btn ${mailState.matched ? 'on' : ''}" data-flag="matched">🏷 المطابقة فقط</button>
+      <button class="chip btn ${mailState.unread ? 'on' : ''}" data-flag="unread">● غير المقروءة</button>
+      <button class="chip btn ${mailState.att ? 'on' : ''}" data-flag="att">📎 بمرفقات</button>
+      <span class="sub" id="count"></span>
+    </div>
+    <div class="list" id="mailList">${loadingHtml()}</div>
+    <div class="row" style="justify-content:center;margin-top:10px"><button class="btn sm hidden" id="more">عرض المزيد</button></div>
+  </div>`);
+  $('#fAcc').onchange = e => { mailState.acc = e.target.value; mailState.limit = 80; refreshList(); };
+  $('#fMonth').onchange = e => { mailState.month = e.target.value; mailState.limit = 80; refreshList(); };
+  // أي فلتر أو بحث يشمل كل الفترات تلقائيًا حتى لا تختفي النتائج الأقدم من الشهر المعروض
+  function widen() {
+    if (mailState.month === 'all') { renderList(); return; }
+    mailState.month = 'all'; $('#fMonth').value = 'all'; refreshList();
+  }
+  let tmr; $('#fQ').oninput = e => { clearTimeout(tmr); tmr = setTimeout(() => { mailState.q = e.target.value; mailState.q.trim() ? widen() : renderList(); }, 250); };
+  $$('[data-flag]').forEach(b => b.onclick = () => { const f = b.dataset.flag; mailState[f] = !mailState[f]; b.classList.toggle('on', mailState[f]); mailState[f] ? widen() : renderList(); });
+  $('#more').onclick = () => { mailState.limit += 120; renderList(); };
+  let items = [];
+  async function refreshList() {
+    $('#mailList').innerHTML = loadingHtml();
+    const chosen = mailState.acc === 'all' ? accs : accs.filter(a => a.id === mailState.acc);
+    const tasks = [];
+    for (const a of chosen) {
+      const ms = mailState.month === 'all' ? (a.months || []) : (a.months || []).includes(mailState.month) || mailState.acc !== 'all' ? [mailState.month] : [];
+      for (const m of ms) tasks.push(() => loadIndex(a.id, m));
+    }
+    if (tasks.length > 6) $('#mailList').innerHTML = loadingHtml(`جارٍ تحميل ${tasks.length} فهرسًا شهريًا…`);
+    try {
+      const lists = await pool(tasks, 8);
+      items = lists.flat().sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+    } catch (e) { $('#mailList').innerHTML = errorHtml(e); return; }
+    renderList();
+  }
+  function renderList() {
+    const q = norm(mailState.q.trim());
+    const filtered = items.filter(e =>
+      (!mailState.matched || (e.matched && e.matched.length)) &&
+      (!mailState.unread || !e.seen) &&
+      (!mailState.att || e.att > 0) &&
+      (!q || norm(`${e.subject} ${e.from?.name} ${e.from?.email} ${e.snippet}`).includes(q)));
+    $('#count').textContent = `${filtered.length} رسالة`;
+    const shown = filtered.slice(0, mailState.limit);
+    $('#mailList').innerHTML = shown.length ? shown.map(itemHtml).join('') : `<div class="empty"><div class="big">📭</div>لا توجد رسائل مطابقة</div>`;
+    $('#more').classList.toggle('hidden', filtered.length <= mailState.limit);
+  }
+  await refreshList();
+}
+function itemHtml(e) {
+  const a = accById(e.account);
+  const from = e.sent ? `إلى: ${esc(addr(e.to) || e.to?.email || '')}` : esc(addr(e.from) || e.from?.email || '—');
+  return `<a class="item ${e.seen ? '' : 'unread'}" href="#/msg/${encodeURIComponent(e.account)}/${e.id}" style="color:inherit">
+    <span class="dot"></span>
+    <div class="avatar" style="background:${colorFor(e.from?.email || e.account)}">${esc(initial(e.from))}</div>
+    <div class="body">
+      <div class="top"><span class="from">${from}</span><span class="time">${esc(fshort(e.date))}</span></div>
+      <div class="subject">${esc(e.subject || '(بدون عنوان)')}</div>
+      <div class="snippet">${esc(e.snippet || '')}</div>
+      <div class="meta">
+        ${mailState.acc === 'all' && a ? `<span class="chip">${esc(a.name)}</span>` : ''}
+        ${(e.matched || []).map(m => `<span class="chip tag">🏷 ${esc(m)}</span>`).join('')}
+        ${e.att ? `<span class="chip">📎 ${e.att}</span>` : ''}
+        ${e.flagged ? '<span class="chip warn">⭐</span>' : ''}${e.answered ? '<span class="chip">↩︎ تم الرد</span>' : ''}
+        ${e.archived ? '<span class="chip">📥 مؤرشفة</span>' : ''}${e.trashed ? '<span class="chip err">🗑 مهملات</span>' : ''}${e.sent ? '<span class="chip ok">📤 مرسلة</span>' : ''}
+      </div>
+    </div></a>`;
+}
+
+/* ========= عرض رسالة ========= */
+async function viewMessage(accId, id) {
+  render(loadingHtml());
+  await loadAccounts();
+  const acc = accById(accId);
+  const m = await fetchJSON(dataPath(`messages/${accId}/${id}.json`));
+  if (!m) { render(`<div class="notice err">الرسالة غير موجودة في الأرشيف.</div><a class="btn" href="#/mail">↩ العودة للرسائل</a>`); return; }
+  const f = m.flags || {};
+  const canAct = !isLocal() && !m.sent;
+  render(`
+  <div class="row" style="margin-bottom:10px"><a class="btn sm" href="javascript:history.back()">→ رجوع</a></div>
+  <div class="card msg-head">
+    <h2>${esc(m.subject || '(بدون عنوان)')}</h2>
+    <div class="row">
+      ${acc ? `<span class="chip">${esc(acc.name)}</span>` : ''}<span class="chip">📁 ${esc(m.folder || '')}</span>
+      ${(m.matched || []).map(x => `<span class="chip tag">🏷 ${esc(x)}</span>`).join('')}
+      ${f.flagged ? '<span class="chip warn">⭐ مميزة</span>' : ''}${f.answered ? '<span class="chip">↩︎ تم الرد</span>' : ''}
+      ${m.archived ? `<span class="chip">📥 مؤرشفة → ${esc(m.moved_to || '')}</span>` : ''}${m.trashed ? '<span class="chip err">🗑 في المهملات</span>' : ''}${m.sent ? '<span class="chip ok">📤 مرسلة</span>' : ''}
+      ${!f.seen && !m.sent ? '<span class="chip on">● غير مقروءة</span>' : ''}
+    </div>
+    <div class="kv">
+      <span class="k">من</span><span class="v">${esc(addrFull(m.from))}</span>
+      <span class="k">إلى</span><span class="v">${esc((m.to || []).map(addrFull).join('، ') || '—')}</span>
+      ${(m.cc || []).length ? `<span class="k">نسخة</span><span class="v">${esc(m.cc.map(addrFull).join('، '))}</span>` : ''}
+      <span class="k">التاريخ</span><span class="v">${esc(fdate(m.date || m.received))}</span>
+      <span class="k">المعرف</span><span class="v mono ltr">${esc(accId)}:${esc(id)}</span>
+    </div>
+    <div class="actions">
+      ${canAct ? `
+      <button class="btn sm primary" id="aReply">↩️ رد</button>
+      <button class="btn sm" data-act="${f.seen ? 'mark_unread' : 'mark_read'}">${f.seen ? '✉️ غير مقروءة' : '👁 مقروءة'}</button>
+      <button class="btn sm" data-act="${f.flagged ? 'unflag' : 'flag'}">${f.flagged ? '☆ إزالة التمييز' : '⭐ تمييز'}</button>
+      <button class="btn sm" data-act="archive" ${m.archived || m.trashed ? 'disabled' : ''}>📥 أرشفة</button>
+      <button class="btn sm danger" data-act="trash" ${m.trashed ? 'disabled' : ''}>🗑 مهملات</button>` : ''}
+      ${m.raw_path ? `<button class="btn sm" id="aRaw">⬇️ الأصل (.eml)</button>` : ''}
+    </div>
+    <div id="replyBox" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="form-grid">
+        <div class="field"><label>إلى</label><input class="input ltr" id="rTo" value="${esc((m.reply_to?.length ? m.reply_to : [m.from]).map(a => a?.email).filter(Boolean).join(', '))}"></div>
+        <div class="field"><label>نسخة (اختياري)</label><input class="input ltr" id="rCc"></div>
+        <div class="field full"><label>نص الرد</label><textarea class="input" id="rBody" placeholder="اكتب ردك هنا…"></textarea></div>
+        <div class="field full"><label class="row" style="gap:8px"><input type="checkbox" id="rQuote" checked> تضمين نص الرسالة الأصلية</label></div>
+      </div>
+      <div class="row"><button class="btn primary" id="rSend">📤 إرسال الرد</button><button class="btn" id="rCancel">إلغاء</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="tabs">
+      ${m.html ? '<button data-tab="html" class="active">المعاينة</button>' : ''}
+      <button data-tab="text" class="${m.html ? '' : 'active'}">النص</button>
+      ${m.html ? '<button data-tab="img" id="imgToggle">🖼 تحميل الصور البعيدة</button>' : ''}
+    </div>
+    <div id="bodyHtml" class="${m.html ? '' : 'hidden'}"></div>
+    <div id="bodyText" class="${m.html ? 'hidden' : ''}"><pre class="pre">${esc(m.text || '(لا يوجد نص)')}</pre></div>
+  </div>
+  ${(m.attachments || []).length ? `<div class="card"><h3>المرفقات (${m.attachments.length})</h3>
+    ${m.attachments.map((a, i) => `<div class="att"><span class="ic">${attIcon(a.content_type)}</span><div style="flex:1;min-width:0"><div class="n">${esc(a.filename)}</div><div class="s">${esc(a.content_type)} · ${fsize(a.size)}${a.inline ? ' · مضمّن' : ''}${a.skipped ? ' · لم يُحفظ (كبير جدًا)' : ''}</div></div>
+      ${a.path ? `<button class="btn sm" data-dl="${i}">⬇️</button>` : ''}</div>`).join('')}</div>` : ''}`);
+
+  // الجسم
+  let allowImages = false;
+  const frameWrap = $('#bodyHtml');
+  async function renderHtml() {
+    if (!m.html) return;
+    let html = m.html;
+    const inline = (m.attachments || []).filter(a => a.inline && a.content_id && a.path && a.size < 3 * 1048576).slice(0, 12);
+    for (const a of inline) {
+      try { const b = await fetchBlob(a.path); const du = await blobToDataUrl(b); html = html.split(`cid:${a.content_id}`).join(du); } catch {}
+    }
+    const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${allowImages ? 'https: http:' : ''}; font-src data:;`;
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>body{font-family:Cairo,system-ui,sans-serif;margin:12px;word-break:break-word;color:#111;background:#fff} img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
+    frameWrap.innerHTML = '';
+    const fr = document.createElement('iframe');
+    fr.className = 'mailframe'; fr.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox'); fr.setAttribute('referrerpolicy', 'no-referrer');
+    fr.srcdoc = doc; frameWrap.appendChild(fr);
+  }
+  renderHtml();
+  $$('[data-tab]').forEach(b => b.onclick = () => {
+    if (b.dataset.tab === 'img') { allowImages = !allowImages; b.textContent = allowImages ? '🚫 إخفاء الصور البعيدة' : '🖼 تحميل الصور البعيدة'; renderHtml(); return; }
+    $$('[data-tab]').forEach(x => x.dataset.tab !== 'img' && x.classList.toggle('active', x === b));
+    $('#bodyHtml').classList.toggle('hidden', b.dataset.tab !== 'html');
+    $('#bodyText').classList.toggle('hidden', b.dataset.tab !== 'text');
+  });
+  // الأوامر
+  $$('[data-act]').forEach(b => b.onclick = async () => {
+    const act = b.dataset.act;
+    if (act === 'trash' && !confirm('نقل الرسالة إلى المهملات على الخادم؟ (ستبقى النسخة في الأرشيف)')) return;
+    b.disabled = true;
+    try { await dispatchAction({ action: act, account: accId, id }); toast('تم إرسال الأمر، سيُنفّذ خلال دقيقة تقريبًا ويظهر في السجل'); }
+    catch (e) { toast(e.message, true); b.disabled = false; }
+  });
+  $('#aReply')?.addEventListener('click', () => { $('#replyBox').classList.toggle('hidden'); $('#rBody')?.focus(); });
+  $('#rCancel')?.addEventListener('click', () => $('#replyBox').classList.add('hidden'));
+  $('#rSend')?.addEventListener('click', async () => {
+    const body = $('#rBody').value.trim(); if (!body) { toast('اكتب نص الرد أولًا', true); return; }
+    $('#rSend').disabled = true;
+    try {
+      await dispatchAction({ action: 'reply', account: accId, id, to: $('#rTo').value, cc: $('#rCc').value, body, quote: $('#rQuote').checked });
+      toast('تم إرسال أمر الرد، سيُرسل خلال دقيقة تقريبًا'); $('#replyBox').classList.add('hidden');
+    } catch (e) { toast(e.message, true); } finally { $('#rSend').disabled = false; }
+  });
+  $('#aRaw')?.addEventListener('click', () => download(m.raw_path, `${id}.eml`));
+  $$('[data-dl]').forEach(b => b.onclick = () => { const a = m.attachments[+b.dataset.dl]; download(a.path, a.filename); });
+}
+function attIcon(ct = '') { if (ct.startsWith('image/')) return '🖼'; if (ct.includes('pdf')) return '📕'; if (ct.includes('zip') || ct.includes('compressed')) return '🗜'; if (ct.includes('sheet') || ct.includes('excel') || ct.includes('csv')) return '📊'; if (ct.includes('word') || ct.includes('document')) return '📝'; return '📎'; }
+function blobToDataUrl(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); }); }
+async function download(path, name) {
+  try {
+    toast('جارٍ التنزيل…');
+    const blob = await fetchBlob(path);
+    const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = name || 'file'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ========= إنشاء رسالة ========= */
+async function viewCompose(accId) {
+  render(loadingHtml());
+  const data = await loadAccounts(); const accs = (data.accounts || []).filter(a => a.enabled);
+  render(`<div class="page-title"><h1>رسالة جديدة</h1></div>
+  <div class="card">
+    ${isLocal() ? '<div class="notice warn">الإرسال يحتاج وضع GitHub.</div>' : ''}
+    <div class="form-grid">
+      <div class="field full"><label>من حساب</label><select class="input" id="cAcc">${accs.map(a => `<option value="${esc(a.id)}" ${a.id === accId ? 'selected' : ''}>${esc(a.name)} — ${esc(a.email)}</option>`).join('')}</select></div>
+      <div class="field"><label>إلى</label><input class="input ltr" id="cTo" placeholder="name@example.com, other@example.com"></div>
+      <div class="field"><label>نسخة (اختياري)</label><input class="input ltr" id="cCc"></div>
+      <div class="field full"><label>العنوان</label><input class="input" id="cSubject"></div>
+      <div class="field full"><label>النص</label><textarea class="input" id="cBody" style="min-height:200px"></textarea></div>
+    </div>
+    <div class="row"><button class="btn primary" id="cSend" ${isLocal() ? 'disabled' : ''}>📤 إرسال</button></div>
+  </div>`);
+  $('#cSend').onclick = async () => {
+    const p = { action: 'send', account: $('#cAcc').value, to: $('#cTo').value, cc: $('#cCc').value, subject: $('#cSubject').value, body: $('#cBody').value.trim() };
+    if (!p.to.includes('@')) { toast('أدخل عنوان المرسل إليه', true); return; }
+    if (!p.body) { toast('اكتب نص الرسالة', true); return; }
+    $('#cSend').disabled = true;
+    try { await dispatchAction(p); toast('تم إرسال الأمر، ستُرسل الرسالة خلال دقيقة تقريبًا'); location.hash = '#/log'; }
+    catch (e) { toast(e.message, true); $('#cSend').disabled = false; }
+  };
+}
+
+/* ========= الحسابات ========= */
+const CONFIG_PATHS = () => [dataPath('config/accounts.yaml'), 'config/accounts.yaml', dataPath('config/accounts.json'), 'config/accounts.json'];
+async function loadConfig(force = false) {
+  if (mem.config && !force) return mem.config;
+  for (const p of CONFIG_PATHS()) {
+    const t = await fetchText(p);
+    if (t != null) { mem.config = { path: p, doc: p.endsWith('.json') ? JSON.parse(t) : (jsyaml.load(t) || {}) }; return mem.config; }
+  }
+  mem.config = { path: isLocal() ? 'config/accounts.yaml' : 'config/accounts.yaml', doc: { defaults: { folders: ['INBOX'], archive: 'all', notify: 'matched' }, accounts: [] }, isNew: true };
+  return mem.config;
+}
+async function saveConfig(cfg, message) {
+  const text = cfg.path.endsWith('.json') ? JSON.stringify(cfg.doc, null, 2) : jsyaml.dump(cfg.doc, { lineWidth: -1, noRefs: true, quotingType: '"' });
+  await putFile(cfg.path, text, message);
+  cache.clear(); mem.config = null;
+}
+async function viewAccounts() {
+  render(loadingHtml());
+  const [data, cfg] = await Promise.all([loadAccounts(), loadConfig()]);
+  const status = Object.fromEntries((data.accounts || []).map(a => [a.id, a]));
+  const list = cfg.doc.accounts || [];
+  render(`<div class="page-title"><div><h1>الحسابات</h1><div class="sub">${list.length} حساب في الإعدادات</div></div><a class="btn primary" href="#/account/new">＋ إضافة حساب</a></div>
+  ${cfg.isNew ? '<div class="notice info">لا يوجد ملف إعدادات بعد. أضف أول حساب وسيُنشأ الملف config/accounts.yaml تلقائيًا.</div>' : ''}
+  ${isLocal() ? '<div class="notice warn">في الوضع المحلي يمكنك العرض فقط. الحفظ يحتاج وضع GitHub.</div>' : ''}
+  <div class="card"><div class="list">${list.map(a => {
+    const s = status[a.id] || {}; const c = s.counts || {};
+    const st = a.enabled === false ? '<span class="chip">⏸ معطّل</span>' : s.last_error ? '<span class="chip err">⚠️ خطأ</span>' : s.last_check ? '<span class="chip ok">✅ يعمل</span>' : '<span class="chip warn">⏳ بانتظار أول فحص</span>';
+    return `<a class="acc-card" href="#/account/${encodeURIComponent(a.id)}" style="color:inherit">
+      <div class="avatar" style="background:${colorFor(a.id)}">${esc(initial({ name: a.name || a.email }))}</div>
+      <div class="info"><div class="row" style="gap:8px"><span class="name">${esc(a.name || a.id)}</span>${st}<span class="chip">${esc(PROVIDERS[a.provider] || a.provider || 'custom')}</span></div>
+        <div class="mail">${esc(a.email || '')}</div>
+        <div class="sub">${(a.filters || []).length} فلتر · ${c.total ?? 0} رسالة · أرشفة: ${a.archive === 'matched' ? 'المطابقة فقط' : 'الكل'} · تنبيه: ${{ all: 'الكل', none: 'لا', matched: 'المطابقة' }[a.notify || 'matched']}</div>
+        ${s.last_error ? `<div class="sub" style="color:var(--danger)">${esc(s.last_error)}</div>` : ''}
+      </div><span class="muted">✎</span></a>`;
+  }).join('') || '<div class="empty"><div class="big">👥</div>لا توجد حسابات بعد</div>'}</div></div>`);
+}
+function filterRowHtml(f = {}, i = 0) {
+  const j = v => Array.isArray(v) ? v.join(', ') : (v || '');
+  return `<div class="filter-row" data-i="${i}">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px"><strong>فلتر</strong><button class="btn sm danger" data-rm>حذف</button></div>
+    <div class="form-grid">
+      <div class="field"><label>اسم الفلتر</label><input class="input f-name" value="${esc(f.name || '')}" placeholder="مثال: البنك"></div>
+      <div class="field"><label>طريقة المطابقة</label><select class="input f-match"><option value="any" ${f.match !== 'all' ? 'selected' : ''}>يكفي تطابق حقل واحد</option><option value="all" ${f.match === 'all' ? 'selected' : ''}>كل الحقول المذكورة</option></select></div>
+      <div class="field"><label>المرسل يحتوي</label><input class="input f-from" value="${esc(j(f.from))}" placeholder="@bank.com, alerts@"></div>
+      <div class="field"><label>المستلم يحتوي</label><input class="input f-to" value="${esc(j(f.to))}" placeholder="support@"></div>
+      <div class="field"><label>العنوان يحتوي</label><input class="input f-subject" value="${esc(j(f.subject))}" placeholder="تحويل, فاتورة"></div>
+      <div class="field"><label>النص يحتوي</label><input class="input f-body" value="${esc(j(f.body))}" placeholder="رقم العملية"></div>
+      <div class="field full"><label>في أي مكان (المرسل أو العنوان أو النص)</label><input class="input f-anywhere" value="${esc(j(f.anywhere))}" placeholder="اسم شخص أو شركة"></div>
+    </div><div class="hint">افصل بين الكلمات بفاصلة. المطابقة جزئية وغير حساسة لحالة الأحرف أو التشكيل.</div></div>`;
+}
+async function viewAccountEdit(id) {
+  render(loadingHtml());
+  const cfg = await loadConfig();
+  const list = cfg.doc.accounts || (cfg.doc.accounts = []);
+  const a = id ? list.find(x => x.id === id) : null;
+  if (id && !a) { render('<div class="notice err">الحساب غير موجود</div>'); return; }
+  const v = (k, d = '') => a?.[k] ?? d;
+  const custom = a?.custom || {};
+  render(`<div class="page-title"><h1>${a ? 'تعديل حساب' : 'إضافة حساب'}</h1><a class="btn sm" href="#/accounts">↩ الحسابات</a></div>
+  <div class="card">
+    <div class="form-grid">
+      <div class="field"><label>المعرّف (إنجليزي بدون مسافات)</label><input class="input ltr" id="aId" value="${esc(v('id'))}" ${a ? 'readonly' : ''} placeholder="hamza_gmail"></div>
+      <div class="field"><label>الاسم المعروض</label><input class="input" id="aName" value="${esc(v('name'))}" placeholder="حمزة - Gmail"></div>
+      <div class="field"><label>البريد الإلكتروني</label><input class="input ltr" id="aEmail" value="${esc(v('email'))}" placeholder="name@gmail.com"></div>
+      <div class="field"><label>المزود</label><select class="input" id="aProvider">${Object.entries(PROVIDERS).map(([k, l]) => `<option value="${k}" ${v('provider', 'gmail') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label>طريقة الدخول</label><select class="input" id="aAuth"><option value="password" ${v('auth', 'password') === 'password' ? 'selected' : ''}>كلمة مرور / App password</option><option value="oauth2" ${v('auth') === 'oauth2' ? 'selected' : ''}>OAuth2 (refresh token)</option></select></div>
+      <div class="field"><label>اسم المستخدم (اختياري)</label><input class="input ltr" id="aUser" value="${esc(v('username'))}" placeholder="افتراضيًا نفس البريد"></div>
+      <div class="field auth-password"><label>كلمة المرور</label><input class="input ltr" type="password" id="aPass" value="${esc(v('password'))}" placeholder="App password"><div class="hint">تُحفظ في ملف الإعدادات داخل المستودع الخاص. اتركها فارغة لو تستخدم Secrets (PASS_ID).</div></div>
+      <div class="field auth-oauth hidden"><label>Client ID</label><input class="input ltr" id="aCid" value="${esc(a?.oauth2?.client_id || '')}"></div>
+      <div class="field auth-oauth hidden"><label>Client Secret (Google فقط)</label><input class="input ltr" type="password" id="aCsec" value="${esc(a?.oauth2?.client_secret || '')}"></div>
+      <div class="field auth-oauth hidden full"><label>Refresh Token</label><input class="input ltr" type="password" id="aRt" value="${esc(a?.oauth2?.refresh_token || '')}"><div class="hint">احصل عليه بتشغيل tools/oauth_setup.py على جهازك.</div></div>
+      <div class="field prov-custom"><label>خادم IMAP</label><input class="input ltr" id="aImap" value="${esc(custom.imap_host || '')}" placeholder="mail.example.com"></div>
+      <div class="field prov-custom"><label>منفذ IMAP</label><input class="input ltr" id="aImapPort" value="${esc(custom.imap_port || 993)}"></div>
+      <div class="field prov-custom"><label>خادم SMTP</label><input class="input ltr" id="aSmtp" value="${esc(custom.smtp_host || '')}" placeholder="mail.example.com"></div>
+      <div class="field prov-custom"><label>منفذ SMTP / التشفير</label><div class="row"><input class="input ltr" id="aSmtpPort" value="${esc(custom.smtp_port || 465)}" style="width:100px"><select class="input" id="aSmtpSec" style="width:auto"><option value="ssl" ${(custom.smtp_security || 'ssl') === 'ssl' ? 'selected' : ''}>SSL</option><option value="starttls" ${custom.smtp_security === 'starttls' ? 'selected' : ''}>STARTTLS</option><option value="none" ${custom.smtp_security === 'none' ? 'selected' : ''}>بدون</option></select></div></div>
+      <div class="field"><label>المجلدات التي تُفحص</label><input class="input ltr" id="aFolders" value="${esc((a?.folders || ['INBOX']).join(', '))}"></div>
+      <div class="field"><label>معرّف محادثة تليجرام (اختياري)</label><input class="input ltr" id="aChat" value="${esc(v('telegram_chat_id'))}" placeholder="افتراضيًا TELEGRAM_CHAT_ID"></div>
+      <div class="field"><label>ماذا يُحفظ</label><select class="input" id="aArchive"><option value="all" ${v('archive', 'all') === 'all' ? 'selected' : ''}>كل الرسائل</option><option value="matched" ${v('archive') === 'matched' ? 'selected' : ''}>المطابقة للفلاتر فقط</option></select></div>
+      <div class="field"><label>التنبيه عبر تليجرام</label><select class="input" id="aNotify"><option value="matched" ${v('notify', 'matched') === 'matched' ? 'selected' : ''}>للمطابقة للفلاتر فقط</option><option value="all" ${v('notify') === 'all' ? 'selected' : ''}>لكل رسالة جديدة</option><option value="none" ${v('notify') === 'none' ? 'selected' : ''}>بدون تنبيه</option></select></div>
+      <div class="field full"><label>التوقيع (يُضاف للردود)</label><textarea class="input" id="aSig" style="min-height:70px">${esc(v('signature'))}</textarea></div>
+      <div class="field full"><label class="row" style="gap:8px"><input type="checkbox" id="aEnabled" ${v('enabled', true) !== false ? 'checked' : ''}> الحساب مفعّل</label></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px"><h3>الفلاتر</h3><button class="btn sm" id="addFilter">＋ فلتر</button></div>
+    <div id="filters">${(a?.filters || []).map(filterRowHtml).join('')}</div>
+    <div class="sub">الفلاتر العامة في defaults تُطبّق على كل الحسابات بالإضافة إلى هذه.</div>
+  </div>
+  <div class="row" style="margin-top:14px;justify-content:space-between">
+    <button class="btn primary" id="save" ${isLocal() ? 'disabled' : ''}>💾 حفظ</button>
+    ${a ? `<button class="btn danger" id="del" ${isLocal() ? 'disabled' : ''}>🗑 حذف الحساب</button>` : ''}
+  </div>`);
+  function syncVisibility() {
+    const auth = $('#aAuth').value, prov = $('#aProvider').value;
+    $$('.auth-password').forEach(e => e.classList.toggle('hidden', auth !== 'password'));
+    $$('.auth-oauth').forEach(e => e.classList.toggle('hidden', auth !== 'oauth2'));
+    $$('.prov-custom').forEach(e => e.classList.toggle('hidden', prov !== 'custom'));
+  }
+  $('#aAuth').onchange = syncVisibility; $('#aProvider').onchange = syncVisibility; syncVisibility();
+  $('#addFilter').onclick = () => $('#filters').insertAdjacentHTML('beforeend', filterRowHtml({}, $$('#filters .filter-row').length));
+  $('#filters').addEventListener('click', e => { if (e.target.matches('[data-rm]')) e.target.closest('.filter-row').remove(); });
+  const splitList = s => s.split(',').map(x => x.trim()).filter(Boolean);
+  $('#save').onclick = async () => {
+    const idv = $('#aId').value.trim();
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(idv)) { toast('المعرّف يجب أن يكون حروفًا إنجليزية وأرقامًا و _ - فقط', true); return; }
+    if (!a && list.some(x => x.id === idv)) { toast('هذا المعرّف مستخدم بالفعل', true); return; }
+    const email = $('#aEmail').value.trim(); if (!email.includes('@')) { toast('أدخل بريدًا صحيحًا', true); return; }
+    const obj = { id: idv, name: $('#aName').value.trim() || email, provider: $('#aProvider').value, email };
+    const user = $('#aUser').value.trim(); if (user) obj.username = user;
+    obj.auth = $('#aAuth').value;
+    if (obj.auth === 'password') { const p = $('#aPass').value; if (p) obj.password = p; else if (a?.password_env) obj.password_env = a.password_env; }
+    else { obj.oauth2 = { provider: obj.provider === 'gmail' ? 'google' : obj.provider === 'outlook' ? 'microsoft' : (a?.oauth2?.provider || 'google'), client_id: $('#aCid').value.trim(), refresh_token: $('#aRt').value.trim() }; const cs = $('#aCsec').value.trim(); if (cs) obj.oauth2.client_secret = cs; if (!obj.oauth2.client_id || !obj.oauth2.refresh_token) { toast('OAuth2 يحتاج Client ID و Refresh Token', true); return; } }
+    if (obj.provider === 'custom') {
+      obj.custom = { imap_host: $('#aImap').value.trim(), imap_port: +$('#aImapPort').value || 993, smtp_host: $('#aSmtp').value.trim(), smtp_port: +$('#aSmtpPort').value || 465, smtp_security: $('#aSmtpSec').value };
+      if (!obj.custom.imap_host) { toast('أدخل خادم IMAP', true); return; }
+    }
+    obj.folders = splitList($('#aFolders').value); if (!obj.folders.length) obj.folders = ['INBOX'];
+    obj.archive = $('#aArchive').value; obj.notify = $('#aNotify').value;
+    const chat = $('#aChat').value.trim(); if (chat) obj.telegram_chat_id = chat;
+    const sig = $('#aSig').value.trim(); if (sig) obj.signature = sig;
+    if (!$('#aEnabled').checked) obj.enabled = false;
+    obj.filters = $$('#filters .filter-row').map(r => {
+      const f = { name: $('.f-name', r).value.trim() || 'فلتر' };
+      for (const k of ['from', 'to', 'subject', 'body', 'anywhere']) { const vals = splitList($(`.f-${k}`, r).value); if (vals.length) f[k] = vals; }
+      if ($('.f-match', r).value === 'all') f.match = 'all';
+      return f;
+    }).filter(f => Object.keys(f).some(k => ['from', 'to', 'subject', 'body', 'anywhere'].includes(k)));
+    if (!obj.filters.length) delete obj.filters;
+    // الإبقاء على أي حقول متقدمة لم تُعرض في النموذج
+    if (a) for (const k of Object.keys(a)) if (!(k in obj) && !['password', 'password_env', 'oauth2', 'custom', 'telegram_chat_id', 'signature', 'enabled', 'filters', 'username'].includes(k)) obj[k] = a[k];
+    $('#save').disabled = true;
+    try {
+      if (a) list[list.indexOf(a)] = obj; else list.push(obj);
+      await saveConfig(cfg, `${a ? 'تعديل' : 'إضافة'} حساب ${idv}`);
+      toast('تم الحفظ. سيُطبَّق في دورة الفحص القادمة'); location.hash = '#/accounts';
+    } catch (e) { toast(e.message, true); $('#save').disabled = false; }
+  };
+  $('#del')?.addEventListener('click', async () => {
+    if (!confirm(`حذف الحساب ${a.id} من الإعدادات؟ (الرسائل المحفوظة لن تُحذف)`)) return;
+    try { list.splice(list.indexOf(a), 1); await saveConfig(cfg, `حذف حساب ${a.id}`); toast('تم حذف الحساب'); location.hash = '#/accounts'; }
+    catch (e) { toast(e.message, true); }
+  });
+}
+
+/* ========= السجل ========= */
+async function viewLog() {
+  render(loadingHtml());
+  const log = (await fetchJSON(dataPath('actions/log.json'))) || [];
+  const names = { reply: 'رد', send: 'إرسال', mark_read: 'تعليم كمقروءة', mark_unread: 'تعليم كغير مقروءة', flag: 'تمييز', unflag: 'إزالة التمييز', archive: 'أرشفة', trash: 'مهملات' };
+  const src = { dashboard: 'اللوحة', dispatch: 'اللوحة', telegram: 'تليجرام', queue: 'اللوحة' };
+  render(`<div class="page-title"><h1>سجل الأوامر</h1><span class="sub">${log.length} عملية</span></div>
+  <div class="card">${log.length ? log.map(l => `<div class="log-row">
+    <div class="row" style="justify-content:space-between"><span>${l.ok ? '✅' : '❌'} <strong>${esc(names[l.action] || l.action)}</strong> <span class="muted">· ${esc(src[l.source] || l.source || '')} · ${esc(accById(l.account)?.name || l.account)}</span></span><span class="muted">${esc(fdate(l.time))}</span></div>
+    ${l.subject ? `<div>${esc(l.subject)}</div>` : ''}
+    <div class="${l.ok ? 'muted' : ''}" style="${l.ok ? '' : 'color:var(--danger)'}">${esc(l.detail || l.error || '')}</div>
+    ${l.id ? `<a href="#/msg/${encodeURIComponent(l.account)}/${esc(l.id)}" class="sub">فتح الرسالة ←</a>` : ''}
+  </div>`).join('') : '<div class="empty"><div class="big">🧾</div>لا توجد عمليات بعد</div>'}</div>`);
+}
+
+/* ========= الإعدادات ========= */
+function viewSettings() {
+  const s = settings;
+  render(`<div class="page-title"><h1>الإعدادات</h1></div>
+  ${!configured() ? '<div class="notice info">للبدء: أدخل اسم مستودع البيانات وتوكن GitHub. التوكن يُحفظ في متصفحك فقط ولا يُرسل لأي جهة غير GitHub.</div>' : ''}
+  <div class="card">
+    <div class="form-grid">
+      <div class="field"><label>مصدر البيانات</label><select class="input" id="sMode"><option value="github" ${s.mode === 'github' ? 'selected' : ''}>GitHub (موصى به)</option><option value="local" ${s.mode === 'local' ? 'selected' : ''}>ملفات محلية (عرض فقط)</option></select></div>
+      <div class="field"><label>المظهر</label><select class="input" id="sTheme"><option value="auto" ${s.theme === 'auto' ? 'selected' : ''}>تلقائي</option><option value="light" ${s.theme === 'light' ? 'selected' : ''}>فاتح</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>داكن</option></select></div>
+      <div class="field gh"><label>مستودع البيانات (owner/repo)</label><input class="input ltr" id="sRepo" value="${esc(s.repo)}" placeholder="username/mail-data"><div class="hint">المستودع الخاص الذي يحوي accounts.json و index و messages.</div></div>
+      <div class="field gh"><label>مستودع الكود (إن كان منفصلًا)</label><input class="input ltr" id="sCode" value="${esc(s.codeRepo || DEFAULTS.codeRepo)}" placeholder="cBadr/mailwatch"><div class="hint">المستودع العام الذي يحتوي الكود وتعمل فيه عمليات الفحص.</div></div>
+      <div class="field gh"><label>الفرع</label><input class="input ltr" id="sBranch" value="${esc(s.branch)}"></div>
+      <div class="field gh"><label>مجلد البيانات داخل المستودع</label><input class="input ltr" id="sPrefix" value="${esc(s.prefix)}" placeholder="data"><div class="hint">"data" في وضع المستودع الواحد، وفارغ في وضع مستودع البيانات المنفصل.</div></div>
+      <div class="field gh full"><label>توكن GitHub (Fine-grained)</label><input class="input ltr" type="password" id="sToken" value="${esc(s.token)}" placeholder="github_pat_…"><div class="hint">الصلاحيات المطلوبة على المستودع: Contents (Read and write) و Actions (Read and write) و Metadata.</div></div>
+      <div class="field lc full hidden"><label>المسار الأساسي للملفات المحلية</label><input class="input ltr" id="sLocal" value="${esc(s.localBase)}"><div class="hint">مثال: ".." عند فتح dashboard/index.html من داخل المستودع عبر خادم محلي.</div></div>
+    </div>
+    <div class="row"><button class="btn primary" id="sSave">💾 حفظ</button><button class="btn" id="sTest">🔌 اختبار الاتصال</button><span id="sResult" class="sub"></span></div>
+  </div>
+  <div class="card"><h3>كيف تحصل على التوكن؟</h3>
+    <ol style="padding-inline-start:20px;margin:8px 0 0">
+      <li>GitHub ← Settings ← Developer settings ← Personal access tokens ← <b>Fine-grained tokens</b> ← Generate new token.</li>
+      <li>Repository access: اختر مستودع البيانات الخاص ومستودع الكود العام معًا.</li>
+      <li>Permissions ← Repository: <b>Contents: Read and write</b>، <b>Actions: Read and write</b>.</li>
+      <li>انسخ التوكن والصقه أعلاه. يُحفظ في هذا المتصفح فقط.</li>
+    </ol></div>`);
+  function sync() { const gh = $('#sMode').value === 'github'; $$('.gh').forEach(e => e.classList.toggle('hidden', !gh)); $$('.lc').forEach(e => e.classList.toggle('hidden', gh)); }
+  $('#sMode').onchange = sync; sync();
+  const read = () => { settings = { ...settings, mode: $('#sMode').value, theme: $('#sTheme').value, repo: $('#sRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), codeRepo: $('#sCode').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), branch: $('#sBranch').value.trim() || 'main', prefix: $('#sPrefix').value.trim().replace(/^\/+|\/+$/g, ''), token: $('#sToken').value.trim(), localBase: $('#sLocal').value.trim() || '..' }; };
+  $('#sSave').onclick = () => { read(); saveSettings(); applyTheme(); cache.clear(); mem.accounts = null; mem.index.clear(); mem.config = null; toast('تم الحفظ'); if (configured()) location.hash = '#/'; };
+  $('#sTest').onclick = async () => {
+    read(); applyTheme(); const out = $('#sResult'); out.textContent = 'جارٍ الاختبار…';
+    try {
+      if (isLocal()) { const d = await fetchJSON(dataPath('accounts.json')); out.textContent = d ? `✅ تم العثور على ${d.accounts?.length ?? 0} حساب` : '⚠️ لم يُعثر على accounts.json'; return; }
+      const r = await ghApi('');
+      const d = await fetchJSON(dataPath('accounts.json'));
+      out.textContent = `✅ ${r.full_name} (${r.private ? 'خاص' : 'عام'}) — ${d ? `${d.accounts?.length ?? 0} حساب، آخر فحص ${ago(d.updated)}` : 'لا يوجد accounts.json بعد'}`;
+    } catch (e) { out.textContent = '❌ ' + e.message; }
+  };
+}
+
+/* ========= تشغيل ========= */
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+$('#btnTheme').onclick = () => { const cur = document.documentElement.getAttribute('data-theme'); settings.theme = cur === 'dark' ? 'light' : 'dark'; saveSettings(); applyTheme(); };
+$('#btnRefresh').onclick = () => { cache.clear(); mem.accounts = null; mem.index.clear(); mem.config = null; route(); toast('تم التحديث'); };
+addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>

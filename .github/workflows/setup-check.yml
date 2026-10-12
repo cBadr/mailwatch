@@ -1,0 +1,56 @@
+name: اختبار الإعداد
+
+# يرسل رسالة اختبار إلى تليجرام ويتحقق من ملف الإعدادات والاتصال بالحسابات.
+on:
+  workflow_dispatch:
+
+env:
+  DATA_REPO: ${{ vars.DATA_REPO || 'cBadr/Hamza' }}
+  PUBLIC_LOGS: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: جلب الكود
+        uses: actions/checkout@v4
+
+      - name: جلب مستودع البيانات الخاص
+        if: ${{ env.DATA_REPO != github.repository }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DATA_REPO }}
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data_repo
+
+      - name: تحديد المسارات
+        run: |
+          if [ -d data_repo/.git ]; then
+            echo "DATA_DIR=data_repo/data" >> "$GITHUB_ENV"
+            echo "DATA_REPO_DIR=data_repo" >> "$GITHUB_ENV"
+          else
+            echo "DATA_DIR=data" >> "$GITHUB_ENV"
+          fi
+
+      - name: إعداد Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: تثبيت المتطلبات
+        run: pip install -q -r requirements.txt
+
+      - name: رسالة اختبار إلى تليجرام
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m mailwatch telegram-test --text "✅ مراقب البريد جاهز على GitHub Actions. هذه رسالة اختبار."
+
+      - name: التحقق من الإعدادات والاتصال بالحسابات
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ACCOUNT_PASSWORDS: ${{ secrets.ACCOUNT_PASSWORDS }}
+        run: python -m mailwatch check --connect
