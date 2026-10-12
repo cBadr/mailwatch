@@ -2,7 +2,7 @@ name: فحص البريد
 
 on:
   schedule:
-    - cron: "*/5 * * * *"      # كل 5 دقائق (أقل مدة يسمح بها GitHub، وقد يتأخر وقت الضغط)
+    - cron: "2-59/5 * * * *"   # كل 5 دقائق بعيدًا عن بداية الساعة (وقت ضغط GitHub)
   workflow_dispatch:
     inputs:
       backfill_batch:
